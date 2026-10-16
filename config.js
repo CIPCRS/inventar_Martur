@@ -1,4 +1,4 @@
-js
+
 // Configurare Inventar PDA
 window.INVENTAR_CONFIG = {
   demo: false,
