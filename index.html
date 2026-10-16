@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0f2a4a">
+<title>Inventar PDA</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+:root{
+  --navy:#0f2a4a; --navy2:#173d6b; --bg:#f1f4f8; --card:#fff; --ink:#15202b; --muted:#5b6b7c; --line:#d8dfe8;
+  --ok:#1b8a4c; --okbg:#e3f5ea; --warn:#c77700; --warnbg:#fff3df; --err:#c62828; --errbg:#fde8e8; --info:#1e63c7; --infobg:#e6eefb;
+  --r:10px;
+}
+*{box-sizing:border-box} html,body{margin:0;height:100%}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:16px;-webkit-tap-highlight-color:transparent}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer;border:0;border-radius:var(--r);padding:12px 16px;background:var(--navy);color:#fff;font-weight:600;min-height:46px}
+button.sec{background:#fff;color:var(--navy);border:1.5px solid var(--navy)}
+button.ghost{background:transparent;color:var(--navy);border:0;padding:8px 10px;min-height:36px}
+button.ok{background:var(--ok)} button.warn{background:var(--warn)} button.err{background:var(--err)}
+button:disabled{opacity:.45;cursor:default}
+button.big{font-size:18px;min-height:56px;width:100%}
+input,select,textarea{width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:var(--r);background:#fff;min-height:46px}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--info);border-color:var(--info)}
+label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px;font-weight:600}
+h1,h2,h3{margin:0 0 8px} h2{font-size:20px} h3{font-size:16px}
+.muted{color:var(--muted)} .small{font-size:13px} .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap} .grow{flex:1} .right{margin-left:auto}
+.card{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.06);margin-bottom:10px}
+.hidden{display:none!important}
+.topbar{background:var(--navy);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
+.topbar .brand{font-weight:700;letter-spacing:.3px} .topbar .who{margin-left:auto;font-size:13px;opacity:.9}
+.tabs{display:flex;background:#fff;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs button{background:none;color:var(--muted);border-radius:0;border-bottom:3px solid transparent;padding:12px 14px;white-space:nowrap;min-height:44px}
+.tabs button.on{color:var(--navy);border-bottom-color:var(--navy)}
+.page{padding:12px;max-width:1100px;margin:0 auto}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700}
+.pill.ok{background:var(--okbg);color:var(--ok)} .pill.warn{background:var(--warnbg);color:var(--warn)} .pill.err{background:var(--errbg);color:var(--err)} .pill.info{background:var(--infobg);color:var(--info)} .pill.grey{background:#e9edf2;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:14px} th,td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top} th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+tr.click{cursor:pointer} tr.click:hover{background:#f6f8fb}
+.tablewrap{overflow-x:auto}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:10px}
+.kpi{background:#fff;border-radius:10px;padding:10px 12px;box-shadow:0 1px 2px rgba(0,0,0,.06)} .kpi b{display:block;font-size:22px} .kpi span{font-size:12px;color:var(--muted)}
+.bar{height:8px;background:#e5eaf0;border-radius:4px;overflow:hidden} .bar i{display:block;height:100%;background:var(--ok)}
+/* banner feedback */
+.banner{position:fixed;left:0;right:0;top:0;z-index:50;padding:16px 14px;font-size:18px;font-weight:700;color:#fff;text-align:center;transform:translateY(-110%);transition:transform .15s}
+.banner.show{transform:none} .banner.ok{background:var(--ok)} .banner.warn{background:var(--warn)} .banner.err{background:var(--err)} .banner.info{background:var(--info)}
+.banner small{display:block;font-weight:500;font-size:14px;opacity:.95}
+/* PDA */
+.pda .binbox{background:var(--navy);color:#fff;border-radius:12px;padding:12px;display:flex;align-items:center;gap:8px}
+.pda .binbox .bin{font-size:34px;font-weight:800;letter-spacing:1px;flex:1;text-align:center;font-family:ui-monospace,Menlo,Consolas,monospace}
+.pda .binbox button{background:rgba(255,255,255,.15);min-width:52px;padding:10px}
+.pda .binbox .st{font-size:12px;opacity:.85;text-align:center}
+.pda .scanin{font-size:18px;min-height:54px;border-width:2px;border-color:var(--navy)}
+.line{background:#fff;border-radius:10px;padding:10px 12px;margin:8px 0;border-left:6px solid #c9d2dd;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.line.OK{border-left-color:var(--ok);background:var(--okbg)} .line.CANT{border-left-color:var(--warn);background:var(--warnbg)} .line.LOC{border-left-color:var(--info);background:var(--infobg)} .line.LIPSA{border-left-color:var(--err);background:var(--errbg)} .line.PLUS{border-left-color:#7b3fbf;background:#f1e8fb}
+.line .mat{font-weight:800;font-size:18px;font-family:ui-monospace,Menlo,Consolas,monospace} .line .desc{font-size:13px;color:var(--muted)}
+.line .qty{font-size:24px;font-weight:800;white-space:nowrap} .line .su{font-size:12px;color:var(--muted);font-family:ui-monospace,Menlo,Consolas,monospace}
+.binlist .b{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-radius:8px;margin:6px 0;cursor:pointer;border-left:5px solid #c9d2dd}
+.binlist .b.done{border-left-color:var(--ok)} .binlist .b.closed{border-left-color:var(--err)} .binlist .b.cur{outline:2px solid var(--navy)}
+.binlist .b .n{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700;font-size:18px}
+/* modal */
+.modal{position:fixed;inset:0;background:rgba(10,20,35,.55);z-index:40;display:flex;align-items:flex-end;justify-content:center}
+.modal .box{background:#fff;width:100%;max-width:560px;border-radius:16px 16px 0 0;padding:16px;max-height:92vh;overflow:auto}
+@media(min-width:700px){.modal{align-items:center}.modal .box{border-radius:16px}}
+.modal .x{float:right;font-size:22px;background:none;color:var(--muted);padding:0 8px;min-height:0}
+.numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px} .numpad button{min-height:52px;font-size:20px;background:#eef2f7;color:var(--ink)}
+.chk{display:flex;align-items:center;gap:8px;padding:8px 0;font-weight:500} .chk input{width:auto;min-height:0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px} @media(max-width:600px){.grid2{grid-template-columns:1fr}}
+.login{max-width:420px;margin:40px auto;padding:16px}
+.login .logo{font-size:28px;font-weight:800;color:var(--navy);margin-bottom:4px}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#15202b;color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;max-width:92vw;text-align:center}
+.toast.show{opacity:1}
+.offline{background:var(--warn);color:#fff;text-align:center;font-size:13px;padding:4px}
+</style>
+</head>
+<body>
+<div id="banner" class="banner"></div>
+<div id="toast" class="toast"></div>
+<div id="app"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="config.js"></script>
+<script type="module">
+/* ============================ UTIL ============================ */
+const CFG = window.INVENTAR_CONFIG || {demo:true};
+const $ = (s, el=document)=>el.querySelector(s);
+const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const now = ()=>Date.now();
+const fmtT = t => t? new Date(t).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+const fmtF = t => t? new Date(t).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
+const fmtD = t => t? new Date(t).toLocaleDateString('ro-RO') : '';
+const slugify = s => s.toLowerCase().trim().replace(/[ăâ]/g,'a').replace(/î/g,'i').replace(/ș|ş/g,'s').replace(/ț|ţ/g,'t').replace(/[^a-z0-9]+/g,'.').replace(/^\.|\.$/g,'');
+const uid = ()=>Math.random().toString(36).slice(2,10)+now().toString(36);
+let toastT; function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2500);}
+let bannerT; function banner(kind,title,sub){const b=$('#banner');b.className='banner show '+kind;b.innerHTML=esc(title)+(sub?'<small>'+esc(sub)+'</small>':'');clearTimeout(bannerT);bannerT=setTimeout(()=>b.classList.remove('show'),kind==='ok'?1500:3500);}
+let actx; function beep(kind){try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();const seq=kind==='ok'?[[880,.09]]:kind==='warn'?[[600,.12],[600,.12]]:[[200,.4]];let t=actx.currentTime;seq.forEach(([f,d])=>{const o=actx.createOscillator(),g=actx.createGain();o.frequency.value=f;o.connect(g);g.connect(actx.destination);g.gain.setValueAtTime(.25,t);o.start(t);o.stop(t+d);t+=d+.06;});}catch(e){} try{navigator.vibrate&&navigator.vibrate(kind==='ok'?60:kind==='warn'?[80,60,80]:[300]);}catch(e){} }
+function modal(html){const m=document.createElement('div');m.className='modal';m.innerHTML='<div class="box"><button class="x" data-close>✕</button>'+html+'</div>';m.querySelector('[data-close]').onclick=()=>m.remove();document.body.appendChild(m);return m;}
+function confirmDlg(title,text,okLabel='Da',kind=''){return new Promise(res=>{const m=modal(`<h2>${esc(title)}</h2><p>${esc(text)}</p><div class="row"><button class="sec grow" data-no>Nu</button><button class="grow ${kind}" data-yes>${esc(okLabel)}</button></div>`);m.querySelector('[data-no]').onclick=()=>{m.remove();res(false)};m.querySelector('[data-yes]').onclick=()=>{m.remove();res(true)};m.querySelector('[data-close]').onclick=()=>{m.remove();res(false)};});}
+
+/* ============================ STOCK MODEL ============================ */
+// Zona (rând) unei locații: A-1-2-3 -> "A"; F20 / YER / A-1-1 -> locația însăși (zonă de vrac / specială)
+function zoneOf(bin){ const p=String(bin).split('-'); return p.length===4 ? p[0] : String(bin); }
+function isBulkZone(z){ return !/^[A-Z]{1,2}$/.test(z); }
+function binSortKey(bin){ const p=String(bin).split('-'); return [p[0], ...p.slice(1).map(x=>parseInt(x,10)||0)]; }
+function cmpBin(a,b){ const ka=binSortKey(a), kb=binSortKey(b); for(let i=0;i<Math.max(ka.length,kb.length);i++){ if(ka[i]===undefined) return -1; if(kb[i]===undefined) return 1; if(ka[i]<kb[i]) return -1; if(ka[i]>kb[i]) return 1;} return 0; }
+const COLS = ['Material','Plant','Storage Location','Batch','Material Description','Storage Type','Storage Bin','Available stock','Base Unit of Measure','GR Date','Storage Unit'];
+function parseLX02(arrayBuffer){
+  const wb = XLSX.read(arrayBuffer,{type:'array'});
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+  let h=-1; for(let i=0;i<Math.min(rows.length,30);i++){ const r=rows[i].map(x=>String(x).trim()); if(r.includes('Storage Bin')&&r.includes('Material')){h=i;break;} }
+  if(h<0) throw new Error('Nu găsesc antetul (coloanele "Material" și "Storage Bin") în fișier.');
+  const hdr = rows[h].map(x=>String(x).trim()); const ix = n=>hdr.indexOf(n);
+  const c = {m:ix('Material'),pl:ix('Plant'),sl:ix('Storage Location'),b:ix('Batch'),d:ix('Material Description'),st:ix('Storage Type'),bin:ix('Storage Bin'),q:ix('Available stock'),u:ix('Base Unit of Measure'),gr:ix('GR Date'),su:ix('Storage Unit')};
+  if(c.q<0||c.su<0) throw new Error('Lipsesc coloanele "Available stock" sau "Storage Unit".');
+  const lines=[]; let i=0;
+  for(let r=h+1;r<rows.length;r++){ const row=rows[r]; const bin=String(row[c.bin]??'').trim(); const m=String(row[c.m]??'').trim(); if(!bin||!m) continue;
+    const g = c.gr>=0? row[c.gr] : ''; let grs=String(g||''); if(typeof g==='number'){ const dt=XLSX.SSF.parse_date_code(g); grs=dt?`${String(dt.d).padStart(2,'0')}.${String(dt.m).padStart(2,'0')}.${dt.y}`:''; } else if(g instanceof Date){ grs=`${String(g.getDate()).padStart(2,'0')}.${String(g.getMonth()+1).padStart(2,'0')}.${g.getFullYear()}`; }
+    let su = String(row[c.su]??'').trim(); if(/e\+/i.test(su)) su = Number(row[c.su]).toFixed(0);
+    lines.push({i:i++, m, pl:String(row[c.pl]??''), sl:String(row[c.sl]??''), b:String(row[c.b]??''), d:String(row[c.d]??''), st:String(row[c.st]??''), bin, q:Number(row[c.q])||0, u:String(row[c.u]??''), gr:grs, su}); }
+  return lines;
+}
+function lineKey(l){ return l.su ? l.su : 'L'+l.i; }
+// status derivat: rec = înregistrarea scanată (din oricare zonă), closed = locația scriptică a fost închisă
+function lineStatus(l, rec, closed){ if(rec){ if(rec.bin!==l.bin) return 'LOC'; if(Number(rec.q)!==Number(l.q)) return 'CANT'; return 'OK'; } return closed ? 'LIPSA' : 'NENUMARAT'; }
+const STATUS_RO = {OK:'OK',CANT:'Cantitate diferită',LOC:'Altă locație',LIPSA:'Lipsă',NENUMARAT:'Nenumărat',PLUS:'În plus'};
+const STATUS_KIND = {OK:'ok',CANT:'warn',LOC:'info',LIPSA:'err',NENUMARAT:'grey',PLUS:'info'};
+
+/* ============================ STORE (demo local / Firebase) ============================ */
+let Store;
+function makeDemoStore(){
+  const KEY='inventar_demo_v1'; let db; try{db=JSON.parse(localStorage.getItem(KEY)||'null');}catch(e){}
+  if(!db) db={users:{},jobs:{},chunks:{},progress:{},setup:false};
+  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(db));}catch(e){toast('Memoria locală a browserului e plină (mod demo).');}};
+  const listeners={jobs:[],progress:[]}; let cur=null; const authCbs=[];
+  const emitJobs=()=>listeners.jobs.forEach(cb=>cb(Object.values(db.jobs)));
+  const emitProg=(j,z)=>listeners.progress.forEach(l=>{ if(l.job===j && (!l.zone||l.zone===z)) l.cb(z, db.progress[j]?.[z]||{}); });
+  const deepMerge=(a,b)=>{for(const k in b){ if(b[k]&&typeof b[k]==='object'&&!Array.isArray(b[k])){a[k]=a[k]||{};deepMerge(a[k],b[k]);} else a[k]=b[k];} return a;};
+  return {
+    demo:true,
+    async init(){},
+    onAuth(cb){authCbs.push(cb); cb(cur);},
+    async isSetupDone(){return db.setup;},
+    async setupAdmin(name,pin){const id=uid(); db.users[id]={id,name,slug:slugify(name),pin,role:'admin',active:true,created:now()}; db.setup=true; save(); cur=db.users[id]; authCbs.forEach(cb=>cb(cur));},
+    async login(name,pin){const s=slugify(name); const u=Object.values(db.users).find(x=>x.slug===s); if(!u||u.pin!==pin) throw new Error('Nume sau PIN greșit.'); if(u.active===false) throw new Error('Utilizator dezactivat.'); cur=u; authCbs.forEach(cb=>cb(cur));},
+    async logout(){cur=null; authCbs.forEach(cb=>cb(null));},
+    async listUsers(){return Object.values(db.users);},
+    async createUser(name,pin,role){const s=slugify(name); if(Object.values(db.users).some(x=>x.slug===s)) throw new Error('Există deja un utilizator cu acest nume.'); const id=uid(); db.users[id]={id,name,slug:s,pin,role,active:true,created:now()}; save();},
+    async updateUser(id,data){Object.assign(db.users[id],data); save();},
+    listenJobs(cb){listeners.jobs.push(cb); cb(Object.values(db.jobs)); return ()=>{listeners.jobs=listeners.jobs.filter(x=>x!==cb);};},
+    async createJob(job,chunks){db.jobs[job.id]=job; db.chunks[job.id]=chunks; db.progress[job.id]={}; save(); emitJobs(); return job.id;},
+    async updateJob(id,data){Object.assign(db.jobs[id],data); save(); emitJobs();},
+    async getChunks(jobId){return db.chunks[jobId]||{};},
+    async getProgressAll(jobId){return JSON.parse(JSON.stringify(db.progress[jobId]||{}));},
+    listenProgress(jobId,zone,cb){const l={job:jobId,zone,cb}; listeners.progress.push(l); const all=db.progress[jobId]||{}; if(zone) cb(zone,all[zone]||{}); else Object.keys(all).forEach(z=>cb(z,all[z])); return ()=>{listeners.progress=listeners.progress.filter(x=>x!==l);};},
+    async mergeProgress(jobId,zone,obj){db.progress[jobId]=db.progress[jobId]||{}; db.progress[jobId][zone]=deepMerge(db.progress[jobId][zone]||{},JSON.parse(JSON.stringify(obj))); save(); emitProg(jobId,zone);},
+    async deleteProgressField(jobId,zone,path){let o=db.progress[jobId]?.[zone]; for(let i=0;i<path.length-1;i++){o=o?.[path[i]];} if(o) delete o[path[path.length-1]]; save(); emitProg(jobId,zone);},
+    resetDemo(){localStorage.removeItem(KEY); location.reload();}
+  };
+}
+async function makeFirebaseStore(){
+  const [{initializeApp},A,F] = await Promise.all([
+    import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js'),
+    import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js'),
+    import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js')]);
+  const app=initializeApp(CFG.firebase); const auth=A.getAuth(app);
+  let fs; try{ fs=F.initializeFirestore(app,{localCache:F.persistentLocalCache({tabManager:F.persistentMultipleTabManager()})}); }catch(e){ fs=F.getFirestore(app); }
+  const email=s=>`${slugify(s)}@${CFG.authDomainSuffix||'inventar.local'}`;
+  let cur=null; const authCbs=[]; let ready=false;
+  const loadUser=async u=>{ if(!u) return null; const d=await F.getDoc(F.doc(fs,'users',u.uid)); if(!d.exists()) return {id:u.uid,name:u.email,role:'numarator',active:true,missing:true}; return {id:u.uid,...d.data()}; };
+  A.onAuthStateChanged(auth, async u=>{ cur=await loadUser(u); ready=true; authCbs.forEach(cb=>cb(cur)); });
+  const strip=o=>JSON.parse(JSON.stringify(o));
+  return {
+    demo:false,
+    async init(){},
+    onAuth(cb){authCbs.push(cb); if(ready) cb(cur);},
+    async isSetupDone(){ const d=await F.getDoc(F.doc(fs,'config','locked')); return d.exists(); },
+    async setupAdmin(name,pin){ const cred=await A.createUserWithEmailAndPassword(auth,email(name),pin); await F.setDoc(F.doc(fs,'users',cred.user.uid),{name,slug:slugify(name),role:'admin',active:true,created:now()}); await F.setDoc(F.doc(fs,'config','locked'),{at:now()}); cur=await loadUser(cred.user); authCbs.forEach(cb=>cb(cur)); },
+    async login(name,pin){ try{ await A.signInWithEmailAndPassword(auth,email(name),pin);}catch(e){ throw new Error('Nume sau PIN greșit.'); } },
+    async logout(){ await A.signOut(auth); },
+    async listUsers(){ const s=await F.getDocs(F.collection(fs,'users')); return s.docs.map(d=>({id:d.id,...d.data()})); },
+    async createUser(name,pin,role){ const sec=initializeApp(CFG.firebase,'sec'+uid()); const sa=A.getAuth(sec); let cred; try{ cred=await A.createUserWithEmailAndPassword(sa,email(name),pin);}catch(e){ throw new Error(e.code==='auth/email-already-in-use'?'Există deja un utilizator cu acest nume.':'Nu am putut crea utilizatorul: '+e.message); } await F.setDoc(F.doc(fs,'users',cred.user.uid),{name,slug:slugify(name),role,active:true,created:now()}); await A.signOut(sa); },
+    async updateUser(id,data){ await F.updateDoc(F.doc(fs,'users',id),data); },
+    listenJobs(cb){ return F.onSnapshot(F.collection(fs,'jobs'),s=>cb(s.docs.map(d=>({id:d.id,...d.data()})))); },
+    async createJob(job,chunks){ const b=F.writeBatch(fs); b.set(F.doc(fs,'jobs',job.id),strip(job)); for(const z in chunks){ b.set(F.doc(fs,'jobs',job.id,'chunks',z),{lines:strip(chunks[z])}); } await b.commit(); return job.id; },
+    async updateJob(id,data){ await F.updateDoc(F.doc(fs,'jobs',id),strip(data)); },
+    async getChunks(jobId){ const s=await F.getDocs(F.collection(fs,'jobs',jobId,'chunks')); const o={}; s.docs.forEach(d=>o[d.id]=d.data().lines||[]); return o; },
+    async getProgressAll(jobId){ const s=await F.getDocs(F.collection(fs,'jobs',jobId,'progress')); const o={}; s.docs.forEach(d=>o[d.id]=d.data()); return o; },
+    listenProgress(jobId,zone,cb){ if(zone) return F.onSnapshot(F.doc(fs,'jobs',jobId,'progress',zone),d=>cb(zone,d.exists()?d.data():{})); return F.onSnapshot(F.collection(fs,'jobs',jobId,'progress'),s=>s.docChanges().forEach(ch=>cb(ch.doc.id,ch.type==='removed'?{}:ch.doc.data()))); },
+    async mergeProgress(jobId,zone,obj){ await F.setDoc(F.doc(fs,'jobs',jobId,'progress',zone),strip(obj),{merge:true}); },
+    async deleteProgressField(jobId,zone,path){ await F.updateDoc(F.doc(fs,'jobs',jobId,'progress',zone),new F.FieldPath(...path),F.deleteField()); }
+  };
+}
+
+/* ============================ APP STATE ============================ */
+const S = { user:null, tab:null, jobs:[], unsubJobs:null,
+  pda:{ job:null, chunks:null, suIndex:null, binIndex:null, zone:null, bins:[], binIdx:0, binConfirmed:false, prog:{}, progAll:{}, unsub:null, strict:true, reverse:false, lastAction:null, foreign:[] },
+  dash:{ job:null, chunks:null, prog:{}, unsub:null } };
+const app=$('#app');
+const isAdmin=()=>S.user?.role==='admin'; const isSup=()=>S.user?.role==='supervizor'||isAdmin();
+
+/* ============================ AUTH SCREENS ============================ */
+function renderLogin(setupMode){
+  const last=localStorage.getItem('inv_lastname')||'';
+  app.innerHTML=`<div class="login"><div class="logo">${esc(CFG.appName||'Inventar PDA')}</div>
+  <div class="muted small" style="margin-bottom:16px">${setupMode?'Prima configurare — creează contul de administrator.':'Autentificare cu nume și PIN'}${Store.demo?' · <b>mod demo</b> (date doar în acest browser)':''}</div>
+  <div class="card"><label>Nume${setupMode?' administrator':' / echipă'}</label><input id="lname" value="${esc(last)}" autocomplete="username" placeholder="ex. Echipa 3 sau Ion Popescu">
+  <label>PIN (6 cifre)</label><input id="lpin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="current-password">
+  <div id="lerr" class="small" style="color:var(--err);margin-top:8px"></div>
+  <button class="big" id="lbtn" style="margin-top:14px">${setupMode?'Creează administratorul':'Intră'}</button>
+  ${Store.demo&&!setupMode?'<div class="small muted" style="margin-top:10px">Demo: utilizatorul creat la prima configurare. <a href="#" id="lreset">Resetează datele demo</a></div>':''}
+  </div></div>`;
+  const go=async()=>{ const n=$('#lname').value.trim(), p=$('#lpin').value.trim(); $('#lerr').textContent=''; if(!n||p.length<6){$('#lerr').textContent='Completează numele și un PIN de cel puțin 6 cifre.';return;} $('#lbtn').disabled=true; try{ if(setupMode) await Store.setupAdmin(n,p); else await Store.login(n,p); localStorage.setItem('inv_lastname',n);}catch(e){ const el=$('#lerr'); if(el) el.textContent=e.message; } const b=$('#lbtn'); if(b) b.disabled=false; };
+  $('#lbtn').onclick=go; $('#lpin').onkeydown=e=>{if(e.key==='Enter')go();};
+  const r=$('#lreset'); if(r) r.onclick=e=>{e.preventDefault(); if(confirm('Ștergi toate datele demo din acest browser?')) Store.resetDemo();};
+  (last?$('#lpin'):$('#lname')).focus();
+}
+
+/* ============================ SHELL ============================ */
+function renderShell(){
+  const tabs=[]; tabs.push(['pda','Numărare']);
+  if(isSup()){ tabs.push(['jobs','Joburi']); tabs.push(['dash','Dashboard']); }
+  if(isAdmin()) tabs.push(['users','Utilizatori']);
+  if(!S.tab||!tabs.some(t=>t[0]===S.tab)) S.tab=tabs[0][0];
+  app.innerHTML=`<div class="topbar"><span class="brand">${esc(CFG.appName||'Inventar PDA')}</span><span class="who">${esc(S.user.name)} · ${esc(S.user.role)}</span><button class="ghost" id="logout" style="color:#fff">Ieși</button></div>
+  <div id="offline" class="offline hidden">Fără conexiune — scanările se salvează local și se trimit când revine rețeaua</div>
+  <div class="tabs">${tabs.map(t=>`<button data-tab="${t[0]}" class="${S.tab===t[0]?'on':''}">${t[1]}</button>`).join('')}</div><div class="page" id="page"></div>`;
+  $('#logout').onclick=async()=>{ stopPda(); stopDash(); await Store.logout(); };
+  app.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{ S.tab=b.dataset.tab; renderShell(); });
+  const upd=()=>$('#offline')?.classList.toggle('hidden',navigator.onLine!==false); window.addEventListener('online',upd); window.addEventListener('offline',upd); upd();
+  if(S.tab!=='pda') stopPda(); if(S.tab!=='dash') stopDash();
+  ({pda:renderPdaHome,jobs:renderJobs,dash:renderDashHome,users:renderUsers})[S.tab]();
+}
+const activeJobs=()=>S.jobs.filter(j=>j.status==='activ').sort((a,b)=>b.created-a.created);
+
+/* ============================ JOBS (admin) ============================ */
+function renderJobs(){
+  const p=$('#page');
+  p.innerHTML=`<div class="row" style="margin-bottom:10px"><h2>Joburi de inventar</h2>${isAdmin()?'<button class="right" id="newjob">+ Job nou din export LX02</button>':''}</div>
+  <div class="card tablewrap"><table><thead><tr><th>Job</th><th>Creat</th><th>Zone</th><th>Linii</th><th>Status</th><th></th></tr></thead><tbody id="jtb"></tbody></table></div>`;
+  const tb=$('#jtb'); const jobs=[...S.jobs].sort((a,b)=>b.created-a.created);
+  if(!jobs.length) tb.innerHTML='<tr><td colspan="6" class="muted">Niciun job. Importă un export LX02.</td></tr>';
+  jobs.forEach(j=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td><b>${esc(j.name)}</b><div class="small muted">${esc(j.source||'')}${j.parent?' · reverificare':''}</div></td><td>${fmtT(j.created)}<div class="small muted">${esc(j.createdBy||'')}</div></td><td>${j.zones.length}</td><td>${j.totalLines}</td><td><span class="pill ${j.status==='activ'?'ok':'grey'}">${j.status}</span></td>
+    <td class="row"><button class="sec" data-dash="${j.id}">Dashboard</button>${isAdmin()?`<button class="sec" data-tog="${j.id}">${j.status==='activ'?'Închide':'Redeschide'}</button>`:''}</td>`; tb.appendChild(tr); });
+  tb.querySelectorAll('[data-dash]').forEach(b=>b.onclick=()=>{ S.tab='dash'; S.dash.job=S.jobs.find(j=>j.id===b.dataset.dash); renderShell(); });
+  tb.querySelectorAll('[data-tog]').forEach(b=>b.onclick=async()=>{ const j=S.jobs.find(x=>x.id===b.dataset.tog); await Store.updateJob(j.id,{status:j.status==='activ'?'inchis':'activ'}); });
+  const nj=$('#newjob'); if(nj) nj.onclick=renderImport;
+}
+function renderImport(){
+  const m=modal(`<h2>Job nou din export LX02</h2><label>Fișier Excel (export LX02)</label><input type="file" id="ifile" accept=".xlsx,.xls,.csv"><div id="ipre" class="small muted" style="margin-top:8px">Alege fișierul…</div><div id="iform" class="hidden"></div>`);
+  let lines=null;
+  $('#ifile',m).onchange=async e=>{ const f=e.target.files[0]; if(!f) return; $('#ipre',m).textContent='Citesc…'; try{ lines=parseLX02(await f.arrayBuffer()); }catch(err){ $('#ipre',m).textContent='Eroare: '+err.message; return; }
+    const zones={}; lines.forEach(l=>{ const z=zoneOf(l.bin); zones[z]=zones[z]||{n:0,bins:new Set(),nosu:0}; zones[z].n++; zones[z].bins.add(l.bin); if(!l.su) zones[z].nosu++; });
+    const zk=Object.keys(zones).sort((a,b)=>cmpBin(a,b));
+    $('#ipre',m).innerHTML=`<b>${lines.length}</b> linii · <b>${new Set(lines.map(l=>l.bin)).size}</b> locații · <b>${new Set(lines.map(l=>l.m)).size}</b> materiale · <b>${lines.filter(l=>l.su).length}</b> cu Storage Unit`;
+    $('#iform',m).classList.remove('hidden');
+    $('#iform',m).innerHTML=`<label>Denumire job</label><input id="iname" value="Inventar ${f.name.replace(/\.[^.]+$/,'')} ${new Date().toLocaleDateString('ro-RO')}">
+      <label>Zone incluse <span class="muted">(bifează ce intră în inventar)</span></label>
+      <div class="row small" style="margin-bottom:6px"><a href="#" id="iall">toate</a> · <a href="#" id="inone">niciuna</a> · <a href="#" id="irack">doar rafturi</a> · <a href="#" id="ibulk">doar vrac/speciale</a></div>
+      <div style="max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px">${zk.map(z=>`<label class="chk" style="margin:0"><input type="checkbox" class="izone" value="${esc(z)}" checked> <b class="mono" style="width:60px">${esc(z)}</b> <span class="muted">${zones[z].n} paleți · ${zones[z].bins.size} locații${isBulkZone(z)?' · vrac/special':''}${zones[z].nosu?' · '+zones[z].nosu+' fără SU':''}</span></label>`).join('')}</div>
+      <label>Filtru material <span class="muted">(opțional — ex. M310, separate prin virgulă; gol = toate)</span></label><input id="imat" placeholder="">
+      <label class="chk"><input type="checkbox" id="istrict" checked> Mod strict: paletul se scanează doar după scanarea etichetei de locație</label>
+      <div id="ierr" class="small" style="color:var(--err)"></div>
+      <button class="big" id="icreate" style="margin-top:10px">Creează jobul</button>`;
+    const set=fn=>m.querySelectorAll('.izone').forEach(c=>c.checked=fn(c.value));
+    $('#iall',m).onclick=e=>{e.preventDefault();set(()=>true)}; $('#inone',m).onclick=e=>{e.preventDefault();set(()=>false)}; $('#irack',m).onclick=e=>{e.preventDefault();set(z=>!isBulkZone(z))}; $('#ibulk',m).onclick=e=>{e.preventDefault();set(z=>isBulkZone(z))};
+    $('#icreate',m).onclick=async()=>{ const sel=new Set([...m.querySelectorAll('.izone:checked')].map(c=>c.value)); const mats=$('#imat',m).value.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
+      const chosen=lines.filter(l=>sel.has(zoneOf(l.bin))&&(!mats.length||mats.some(p=>l.m.toUpperCase().startsWith(p))));
+      if(!chosen.length){$('#ierr',m).textContent='Nicio linie selectată.';return;}
+      const chunks={}; chosen.forEach(l=>{ const z=zoneOf(l.bin); (chunks[z]=chunks[z]||[]).push(l); });
+      const job={id:uid(),name:$('#iname',m).value.trim()||'Inventar',created:now(),createdBy:S.user.name,status:'activ',source:f.name,totalLines:chosen.length,strict:$('#istrict',m).checked,
+        zones:Object.keys(chunks).sort(cmpBin).map(z=>({z,n:chunks[z].length,bins:new Set(chunks[z].map(l=>l.bin)).size,bulk:isBulkZone(z)}))};
+      $('#icreate',m).disabled=true; $('#icreate',m).textContent='Salvez…';
+      try{ await Store.createJob(job,chunks); m.remove(); toast('Job creat: '+job.name); }catch(err){ $('#ierr',m).textContent='Eroare la salvare: '+err.message; $('#icreate',m).disabled=false; $('#icreate',m).textContent='Creează jobul'; } };
+  };
+}
+
+/* ============================ USERS (admin) ============================ */
+async function renderUsers(){
+  const p=$('#page'); p.innerHTML='<h2>Utilizatori</h2><div class="muted small">Se încarcă…</div>';
+  const users=(await Store.listUsers()).sort((a,b)=>a.name.localeCompare(b.name));
+  p.innerHTML=`<div class="row" style="margin-bottom:10px"><h2>Utilizatori</h2><button class="right" id="nu">+ Utilizator</button></div>
+  <div class="card small muted">Roluri: <b>admin</b> — tot; <b>supervizor</b> — dashboard + export; <b>numarator</b> — doar ecranul de numărare (PDA). Conectarea se face cu numele + PIN.</div>
+  <div class="card tablewrap"><table><thead><tr><th>Nume</th><th>Rol</th><th>Status</th><th></th></tr></thead><tbody>${users.map(u=>`<tr><td><b>${esc(u.name)}</b></td><td>${esc(u.role)}</td><td><span class="pill ${u.active===false?'grey':'ok'}">${u.active===false?'dezactivat':'activ'}</span></td><td><button class="ghost" data-tog="${u.id}" data-act="${u.active===false?1:0}">${u.active===false?'Activează':'Dezactivează'}</button></td></tr>`).join('')}</tbody></table></div>`;
+  p.querySelectorAll('[data-tog]').forEach(b=>b.onclick=async()=>{ await Store.updateUser(b.dataset.tog,{active:b.dataset.act==='1'}); renderUsers(); });
+  $('#nu').onclick=()=>{ const m=modal(`<h2>Utilizator nou</h2><label>Nume (echipă sau persoană)</label><input id="un" placeholder="ex. Echipa 1"><label>PIN (6 cifre)</label><input id="up" inputmode="numeric" maxlength="8"><label>Rol</label><select id="ur"><option value="numarator">numarator</option><option value="supervizor">supervizor</option><option value="admin">admin</option></select><div id="ue" class="small" style="color:var(--err)"></div><button class="big" id="us" style="margin-top:12px">Salvează</button>`);
+    $('#us',m).onclick=async()=>{ const n=$('#un',m).value.trim(),pin=$('#up',m).value.trim(),r=$('#ur',m).value; if(!n||pin.length<6){$('#ue',m).textContent='Nume și PIN de minim 6 cifre.';return;} try{ await Store.createUser(n,pin,r); m.remove(); toast('Utilizator creat'); renderUsers(); }catch(e){ $('#ue',m).textContent=e.message; } }; };
+}
+
+/* ============================ PDA — NUMĂRARE ============================ */
+function stopPda(){ if(S.pda.unsub){S.pda.unsub();S.pda.unsub=null;} }
+function renderPdaHome(){
+  const p=$('#page'); const jobs=activeJobs();
+  if(S.pda.job && jobs.some(j=>j.id===S.pda.job.id) && S.pda.zone){ renderPdaCount(); return; }
+  p.innerHTML=`<h2>Alege jobul de inventar</h2>${jobs.length?'':'<div class="card muted">Nu există joburi active.</div>'}${jobs.map(j=>`<div class="card" style="cursor:pointer" data-job="${j.id}"><b>${esc(j.name)}</b><div class="small muted">${j.zones.length} zone · ${j.totalLines} paleți · creat ${fmtT(j.created)}</div></div>`).join('')}`;
+  p.querySelectorAll('[data-job]').forEach(c=>c.onclick=()=>openPdaJob(S.jobs.find(j=>j.id===c.dataset.job)));
+}
+async function openPdaJob(job){
+  const p=$('#page'); p.innerHTML='<div class="card">Se încarcă jobul…</div>';
+  stopPda(); const P=S.pda; P.job=job; P.zone=null; P.foreign=[]; P.strict=job.strict!==false;
+  P.chunks=await Store.getChunks(job.id); P.progAll=await Store.getProgressAll(job.id);
+  P.suIndex={}; P.binIndex={}; for(const z in P.chunks){ P.chunks[z].forEach(l=>{ if(l.su) P.suIndex[l.su]={z,l}; (P.binIndex[l.bin]=P.binIndex[l.bin]||{z,lines:[]}).lines.push(l); }); }
+  P.mats={}; for(const z in P.chunks) P.chunks[z].forEach(l=>{ if(!P.mats[l.m]) P.mats[l.m]={d:l.d,u:l.u}; });
+  renderZonePick();
+}
+function zoneStats(z){ const P=S.pda; const lines=P.chunks[z]||[]; const pr=P.progAll[z]||{}; const sc=pr.sc||{}; const n=lines.length; const done=lines.filter(l=>sc[lineKey(l)]).length; return {n,done,plus:Object.keys(pr.ex||{}).length}; }
+function renderZonePick(){
+  const P=S.pda, p=$('#page'); const zones=P.job.zones;
+  p.innerHTML=`<div class="row"><h2 class="grow">${esc(P.job.name)}</h2><button class="ghost" id="back">◀ Joburi</button></div><div class="muted small" style="margin-bottom:8px">Alege zona (rândul) pe care numeri. Poți scana și o etichetă de locație.</div>
+  <input class="scanin" id="zscan" placeholder="Scanează locația sau alege zona" autocomplete="off">
+  <div style="margin-top:10px">${zones.map(z=>{const s=zoneStats(z.z); const pct=s.n?Math.round(100*s.done/s.n):0; return `<div class="card" style="cursor:pointer;padding:10px 12px" data-z="${esc(z.z)}"><div class="row"><b class="mono" style="font-size:20px;width:64px">${esc(z.z)}</b><div class="grow"><div class="small muted">${z.n} paleți · ${z.bins} locații${z.bulk?' · vrac':''}${s.plus?' · +'+s.plus+' în plus':''}</div><div class="bar"><i style="width:${pct}%"></i></div></div><span class="pill ${pct===100?'ok':'grey'}">${s.done}/${s.n}</span></div></div>`;}).join('')}</div>`;
+  $('#back').onclick=()=>{ P.job=null; renderPdaHome(); };
+  p.querySelectorAll('[data-z]').forEach(c=>c.onclick=()=>startZone(c.dataset.z));
+  const zi=$('#zscan'); zi.focus(); zi.onkeydown=e=>{ if(e.key==='Enter'){ const v=zi.value.trim().toUpperCase(); zi.value=''; const b=P.binIndex[v]; if(b){ startZone(b.z,v); } else toast('Locația nu e în acest job: '+v); } };
+}
+function startZone(z,bin){
+  const P=S.pda; stopPda(); P.zone=z; P.prog=P.progAll[z]||{}; P.binConfirmed=false; P.lastAction=null;
+  const lines=P.chunks[z]; P.bins=[...new Set(lines.map(l=>l.bin))].sort(cmpBin); if(P.reverse) P.bins.reverse();
+  P.binIdx=0; if(bin){ P.binIdx=Math.max(0,P.bins.indexOf(bin)); P.binConfirmed=true; } else { const i=P.bins.findIndex(b=>!binDone(b)); if(i>=0) P.binIdx=i; }
+  P.unsub=Store.listenProgress(P.job.id,z,(zz,d)=>{ P.prog=d||{}; P.progAll[z]=P.prog; if(S.tab==='pda'&&P.zone===z) renderPdaCount(); });
+  renderPdaCount();
+}
+// înregistrări scanate pentru o cheie, din zona proprie (live) sau din snapshot-ul celorlalte zone
+function findRec(key){ const P=S.pda; if(P.prog.sc?.[key]) return {rec:P.prog.sc[key],z:P.zone}; for(const z in P.progAll){ if(z===P.zone) continue; const r=P.progAll[z]?.sc?.[key]; if(r) return {rec:r,z}; } return null; }
+function binLines(bin){ return (S.pda.binIndex[bin]?.lines)||[]; }
+function binDone(bin){ return binLines(bin).every(l=>findRec(lineKey(l))) ; }
+function binClosed(bin){ const P=S.pda; return !!(P.prog.cl?.[bin]); }
+function curBin(){ return S.pda.bins[S.pda.binIdx]; }
+function renderPdaCount(){
+  const P=S.pda, p=$('#page'); const bin=curBin(); const lines=binLines(bin); const bulk=isBulkZone(P.zone);
+  const zs=zoneStats(P.zone); const closed=binClosed(bin); const allDone=lines.length&&lines.every(l=>findRec(lineKey(l)));
+  const extrasHere=Object.entries(P.prog.ex||{}).filter(([id,e])=>e.bin===bin);
+  const foreignHere=Object.entries(P.prog.sc||{}).filter(([k,r])=>r.bin===bin&&r.home&&r.home!==bin);
+  p.innerHTML=`<div class="pda">
+  <div class="row small" style="margin-bottom:6px"><button class="ghost" id="back">◀ Zone</button><b>${esc(P.job.name)}</b><span class="right muted">Zona <b class="mono">${esc(P.zone)}</b> · ${zs.done}/${zs.n}</span></div>
+  <div class="binbox"><button id="prev" ${bulk?'disabled':''}>◀</button><div class="grow"><div class="bin">${esc(bin)}</div><div class="st">${closed?'✕ locație închisă':allDone?'✓ completă':(P.binConfirmed?'locație confirmată':(P.strict?'scanează eticheta locației':'nescanată'))} · ${P.binIdx+1}/${P.bins.length}</div></div><button id="next" ${bulk?'disabled':''}>▶</button></div>
+  <input class="scanin" id="scan" placeholder="${P.strict&&!P.binConfirmed?'Scanează eticheta locației…':'Scanează eticheta paletului…'}" autocomplete="off" style="margin-top:8px">
+  <div class="row" style="margin-top:8px"><button class="sec grow" id="list">Lista locații</button><button class="sec grow" id="manual">Tastează cod</button>${P.lastAction?'<button class="sec" id="undo">↶ Anulează</button>':''}</div>
+  <div id="lines" style="margin-top:6px">
+   ${lines.length?lines.map(l=>{ const f=findRec(lineKey(l)); const st=lineStatus(l,f?.rec,closed); return `<div class="line ${st}"><div class="row"><div class="grow"><div class="mat">${esc(l.m)}</div><div class="desc">${esc(l.d)}${l.b&&l.b!=='SABIT'?' · lot '+esc(l.b):''}</div><div class="su">${l.su?esc(l.su):'fără SU'}${f?' · '+(f.rec.bin!==l.bin?'găsit în '+esc(f.rec.bin)+' · ':'')+esc(f.rec.u||'')+' '+fmtT(f.rec.t):''}</div></div><div style="text-align:right"><div class="qty">${f?esc(f.rec.q)+(f.rec.q!==l.q?' <span class="small muted">/ '+esc(l.q)+'</span>':''):esc(l.q)} <span class="small">${esc(l.u)}</span></div><span class="pill ${STATUS_KIND[st]}">${STATUS_RO[st]}</span></div></div><div class="row" style="margin-top:6px"><button class="ghost" data-qty="${esc(lineKey(l))}">${f?'Corectează cantitatea':'Confirmă manual / altă cantitate'}</button></div></div>`;}).join(''):'<div class="card muted">Nicio linie scriptică în această locație.</div>'}
+   ${foreignHere.map(([k,r])=>`<div class="line LOC"><div class="row"><div class="grow"><div class="mat">${esc(r.m||'')}</div><div class="desc">${esc(r.d||'')}</div><div class="su">${esc(k)} · scriptic în ${esc(r.home)}</div></div><div style="text-align:right"><div class="qty">${esc(r.q)}</div><span class="pill info">Altă locație</span></div></div></div>`).join('')}
+   ${extrasHere.map(([id,e])=>`<div class="line PLUS"><div class="row"><div class="grow"><div class="mat">${esc(e.m)}</div><div class="desc">${esc(e.d||'')}${e.b?' · lot '+esc(e.b):''}</div><div class="su">${esc(e.su||'fără SU')} · ${esc(e.u||'')} ${fmtT(e.t)}</div></div><div style="text-align:right"><div class="qty">${esc(e.q)}</div><span class="pill info">În plus</span></div></div><div class="row" style="margin-top:6px"><button class="ghost" data-delex="${id}">Șterge</button></div></div>`).join('')}
+  </div>
+  <div class="row" style="margin-top:10px">${closed?`<button class="sec grow" id="reopen">Redeschide locația</button>`:`${!allDone&&lines.length?`<button class="warn grow" id="close">Termină locația (${lines.filter(l=>!findRec(lineKey(l))).length} lipsă)</button>`:''}${!lines.some(l=>findRec(lineKey(l)))&&!bulk?`<button class="sec grow" id="empty">Locație goală</button>`:''}`}</div>
+  <div class="row" style="margin-top:14px"><button class="ghost" id="rev">${P.reverse?'Sens: descrescător':'Sens: crescător'}</button><button class="ghost right" id="zonedone">Zonă terminată…</button></div>
+  <div class="small muted" style="margin-top:6px">Mod ${P.strict?'strict (locația se confirmă prin scanare)':'liber'} · scanarea = confirmare cantitate</div></div>`;
+  $('#back').onclick=()=>{ stopPda(); P.zone=null; renderZonePick(); };
+  $('#prev').onclick=()=>gotoBin(P.binIdx-1); $('#next').onclick=()=>gotoBin(P.binIdx+1);
+  $('#list').onclick=renderBinList; $('#manual').onclick=()=>{ const m=modal(`<h2>Introdu codul</h2><input id="mc" placeholder="SU (14 cifre) sau locație" autocomplete="off"><button class="big" id="mok" style="margin-top:10px">OK</button>`); $('#mc',m).focus(); const go=()=>{const v=$('#mc',m).value.trim(); m.remove(); if(v) handleScan(v);}; $('#mok',m).onclick=go; $('#mc',m).onkeydown=e=>{if(e.key==='Enter')go();}; };
+  const u=$('#undo'); if(u) u.onclick=undoLast;
+  p.querySelectorAll('[data-qty]').forEach(b=>b.onclick=()=>qtyDialog(b.dataset.qty));
+  p.querySelectorAll('[data-delex]').forEach(b=>b.onclick=async()=>{ if(await confirmDlg('Șterge paletul adăugat?','Se șterge înregistrarea "în plus" din această locație.','Șterge','err')){ await Store.deleteProgressField(P.job.id,P.zone,['ex',b.dataset.delex]); } });
+  const c=$('#close'); if(c) c.onclick=async()=>{ if(await confirmDlg('Termină locația '+bin+'?','Paleții nescanați de aici vor fi marcați LIPSĂ.','Termină','warn')){ await Store.mergeProgress(P.job.id,P.zone,{cl:{[bin]:{u:S.user.name,t:now()}}}); beep('warn'); gotoNextOpen(); } };
+  const e=$('#empty'); if(e) e.onclick=async()=>{ if(await confirmDlg('Locația '+bin+' este goală?','Toți paleții scriptici de aici vor fi marcați LIPSĂ.','Da, e goală','warn')){ await Store.mergeProgress(P.job.id,P.zone,{cl:{[bin]:{u:S.user.name,t:now(),e:true}}}); beep('warn'); gotoNextOpen(); } };
+  const r=$('#reopen'); if(r) r.onclick=async()=>{ await Store.deleteProgressField(P.job.id,P.zone,['cl',bin]); };
+  $('#rev').onclick=()=>{ P.reverse=!P.reverse; P.bins.reverse(); P.binIdx=P.bins.length-1-P.binIdx; renderPdaCount(); };
+  $('#zonedone').onclick=async()=>{ const open=P.bins.filter(b=>!binDone(b)&&!binClosed(b)); if(!open.length){ toast('Toate locațiile din zonă sunt complete.'); return; } const miss=open.reduce((a,b)=>a+binLines(b).filter(l=>!findRec(lineKey(l))).length,0); if(await confirmDlg('Închizi zona '+P.zone+'?',open.length+' locații incomplete, '+miss+' paleți vor fi marcați LIPSĂ.','Închide zona','warn')){ const cl={}; open.forEach(b=>cl[b]={u:S.user.name,t:now(),zone:true}); await Store.mergeProgress(P.job.id,P.zone,{cl}); toast('Zona închisă'); } };
+  const si=$('#scan'); si.focus(); si.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); const v=si.value.trim(); si.value=''; if(v) handleScan(v); } };
+  si.onblur=()=>setTimeout(()=>{ if(!document.querySelector('.modal') && S.tab==='pda' && document.activeElement===document.body) si.focus(); },150);
+}
+function gotoBin(i){ const P=S.pda; if(i<0||i>=P.bins.length){ toast(i<0?'Ești la prima locație':'Ești la ultima locație'); return; } P.binIdx=i; P.binConfirmed=!P.strict; renderPdaCount(); }
+function gotoNextOpen(){ const P=S.pda; const i=P.bins.findIndex((b,k)=>k>P.binIdx&&!binDone(b)&&!binClosed(b)); if(i>=0){ P.binIdx=i; P.binConfirmed=!P.strict; } renderPdaCount(); }
+function renderBinList(){
+  const P=S.pda; const m=modal(`<h2>Locații — zona ${esc(P.zone)}</h2><input id="bf" placeholder="Caută locație" autocomplete="off"><div class="binlist" id="bl" style="margin-top:8px"></div>`);
+  const draw=()=>{ const f=$('#bf',m).value.trim().toUpperCase(); $('#bl',m).innerHTML=P.bins.filter(b=>!f||b.includes(f)).map((b,i)=>{ const ls=binLines(b); const d=ls.filter(l=>findRec(lineKey(l))).length; const cls=binClosed(b)?'closed':(d===ls.length?'done':''); return `<div class="b ${cls} ${b===curBin()?'cur':''}" data-b="${esc(b)}"><span class="n">${esc(b)}</span><span class="muted small grow">${ls.map(l=>l.m).slice(0,2).join(', ')}${ls.length>2?'…':''}</span><span class="pill ${cls==='done'?'ok':cls==='closed'?'err':'grey'}">${d}/${ls.length}</span></div>`;}).join('');
+    m.querySelectorAll('[data-b]').forEach(el=>el.onclick=()=>{ P.binIdx=P.bins.indexOf(el.dataset.b); P.binConfirmed=!P.strict; m.remove(); renderPdaCount(); }); };
+  $('#bf',m).oninput=draw; draw();
+}
+function qtyDialog(key){
+  const P=S.pda; const bin=curBin(); const l=binLines(bin).find(x=>lineKey(x)===key); if(!l) return; const f=findRec(key);
+  const m=modal(`<h2>${esc(l.m)}</h2><div class="muted small">${esc(l.d)} · ${esc(bin)} · scriptic <b>${esc(l.q)} ${esc(l.u)}</b></div><label>Cantitate numărată fizic</label><input id="q" inputmode="numeric" value="${f?esc(f.rec.q):esc(l.q)}" style="font-size:24px;text-align:center">
+   <div class="numpad">${[1,2,3,4,5,6,7,8,9,'C',0,'⌫'].map(k=>`<button data-k="${k}">${k}</button>`).join('')}</div>
+   <div class="row" style="margin-top:10px"><button class="ok big" id="qok">Salvează</button></div>`);
+  const qi=$('#q',m); qi.focus(); qi.select();
+  m.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{ const k=b.dataset.k; if(k==='C') qi.value=''; else if(k==='⌫') qi.value=qi.value.slice(0,-1); else qi.value+=k; });
+  const save=async()=>{ const q=Number(qi.value); if(!(q>=0)){toast('Cantitate invalidă');return;} m.remove(); await Store.mergeProgress(P.job.id,P.zone,{sc:{[key]:{q,bin,u:S.user.name,t:now(),m:l.m,d:l.d,home:l.bin,man:true}}}); P.lastAction={type:'sc',key}; beep(q===l.q?'ok':'warn'); banner(q===l.q?'ok':'warn',q===l.q?'Confirmat '+l.m:'Cantitate diferită: '+q+' / '+l.q, l.m); };
+  $('#qok',m).onclick=save; qi.onkeydown=e=>{if(e.key==='Enter')save();};
+}
+async function undoLast(){ const P=S.pda; const a=P.lastAction; if(!a) return; if(await confirmDlg('Anulezi ultima scanare?','','Anulează','warn')){ await Store.deleteProgressField(P.job.id,a.z||P.zone,[a.type,a.key]); P.lastAction=null; toast('Anulat'); } }
+async function handleScan(raw){
+  const P=S.pda; const code=raw.trim(); const up=code.toUpperCase();
+  // 1) etichetă de locație?
+  if(P.binIndex[up]){ const b=P.binIndex[up]; if(b.z!==P.zone){ if(await confirmDlg('Locația '+up+' e în zona '+b.z,'Treci pe zona '+b.z+'?','Da, schimbă zona')){ startZone(b.z,up); } return; } P.binIdx=P.bins.indexOf(up); P.binConfirmed=true; beep('ok'); renderPdaCount(); return; }
+  // 2) număr de Storage Unit (14 cifre) — din codul 1D sau din QR
+  const mm=code.match(/\d{14}/); const su=mm?mm[0]:null;
+  if(!su){ beep('err'); banner('err','Cod nerecunoscut',code.slice(0,40)); return; }
+  if(P.strict&&!P.binConfirmed){ beep('err'); banner('err','Scanează mai întâi eticheta locației','Locația curentă: '+curBin()); return; }
+  const bin=curBin(); const hit=P.suIndex[su]; const prev=findRec(su);
+  if(prev){ beep('err'); banner('err','Palet deja scanat','în '+prev.rec.bin+' de '+(prev.rec.u||'?')+' la '+fmtT(prev.rec.t)); return; }
+  if(hit){ const l=hit.l;
+    if(l.bin===bin){ await Store.mergeProgress(P.job.id,P.zone,{sc:{[su]:{q:l.q,bin,u:S.user.name,t:now(),m:l.m,d:l.d,home:l.bin}}}); P.lastAction={type:'sc',key:su}; beep('ok'); banner('ok','✓ '+l.m+' · '+l.q+' '+l.u, l.d); if(binLines(bin).every(x=>x.su===su||findRec(lineKey(x)))) setTimeout(gotoNextOpen,900); return; }
+    // palet găsit în altă locație decât cea scriptică
+    await Store.mergeProgress(P.job.id,P.zone,{sc:{[su]:{q:l.q,bin,u:S.user.name,t:now(),m:l.m,d:l.d,home:l.bin}}}); P.lastAction={type:'sc',key:su}; beep('warn'); banner('warn','Altă locație: scriptic în '+l.bin,l.m+' · '+l.q+' '+l.u+' · înregistrat în '+bin); return; }
+  // 3) SU necunoscut în acest job
+  beep('warn'); addExtraDialog(su,bin);
+}
+function addExtraDialog(su,bin){
+  const P=S.pda; const mats=Object.keys(P.mats).sort();
+  const m=modal(`<h2>Palet necunoscut</h2><div class="muted small">SU <b class="mono">${esc(su)}</b> nu există în acest inventar. Îl adaugi în stoc, în locația <b>${esc(bin)}</b>?</div>
+   <label>Număr articol</label><input id="em" list="matlist" autocomplete="off" placeholder="ex. M310KL150" style="text-transform:uppercase"><datalist id="matlist">${mats.map(x=>`<option value="${esc(x)}">`).join('')}</datalist><div id="ed" class="small muted" style="min-height:18px"></div>
+   <label>Cantitate</label><input id="eq" inputmode="numeric" style="font-size:22px;text-align:center"><label>Lot (opțional)</label><input id="eb" placeholder="SABIT"><div id="ee" class="small" style="color:var(--err)"></div>
+   <div class="row" style="margin-top:10px"><button class="sec grow" data-close2>Nu, renunț</button><button class="ok grow" id="es">Da, adaugă</button></div>`);
+  $('[data-close2]',m).onclick=()=>m.remove();
+  const em=$('#em',m); em.focus(); em.oninput=()=>{ const v=em.value.trim().toUpperCase(); $('#ed',m).textContent=P.mats[v]?P.mats[v].d:(v?'Articol nou (nu e în export)':''); };
+  $('#es',m).onclick=async()=>{ const mat=em.value.trim().toUpperCase(); const q=Number($('#eq',m).value); if(!mat||!(q>0)){$('#ee',m).textContent='Completează articolul și cantitatea.';return;} const id='X'+uid(); m.remove();
+    await Store.mergeProgress(P.job.id,P.zone,{ex:{[id]:{su,m:mat,d:P.mats[mat]?.d||'',b:$('#eb',m).value.trim(),q,bin,u:S.user.name,t:now(),uom:P.mats[mat]?.u||''}}}); P.lastAction={type:'ex',key:id}; beep('ok'); banner('info','Adăugat în plus: '+mat+' · '+q,bin); };
+}
+// tastatură "wedge" (Zebra DataWedge) când nimic nu e focalizat
+let kbuf='',kT; document.addEventListener('keydown',e=>{ if(S.tab!=='pda'||!S.pda.zone) return; const ae=document.activeElement; if(ae&&ae!==document.body&&ae.tagName!=='BUTTON') return; if(e.key==='Enter'){ if(kbuf){const v=kbuf;kbuf='';handleScan(v);} return;} if(e.key.length===1){ kbuf+=e.key; clearTimeout(kT); kT=setTimeout(()=>kbuf='',800);} });
+
+/* ============================ DASHBOARD + EXPORT ============================ */
+function stopDash(){ if(S.dash.unsub){S.dash.unsub();S.dash.unsub=null;} }
+function renderDashHome(){ const p=$('#page'); const jobs=[...S.jobs].sort((a,b)=>b.created-a.created); if(!S.dash.job||!jobs.some(j=>j.id===S.dash.job.id)) S.dash.job=jobs[0]||null;
+  p.innerHTML=`<div class="row" style="margin-bottom:10px"><h2>Dashboard</h2><select id="dj" class="right" style="max-width:360px;width:auto">${jobs.map(j=>`<option value="${j.id}" ${S.dash.job?.id===j.id?'selected':''}>${esc(j.name)} (${j.status})</option>`).join('')}</select></div><div id="dbody">${jobs.length?'':'<div class="card muted">Nu există joburi.</div>'}</div>`;
+  $('#dj').onchange=e=>{ S.dash.job=S.jobs.find(j=>j.id===e.target.value); loadDash(); }; if(S.dash.job) loadDash(); }
+async function loadDash(){ stopDash(); const D=S.dash; $('#dbody').innerHTML='<div class="card">Se încarcă…</div>'; D.chunks=await Store.getChunks(D.job.id); D.prog={}; D.unsub=Store.listenProgress(D.job.id,null,(z,d)=>{ D.prog[z]=d; if(S.tab==='dash'&&D.job) drawDash(); }); drawDash(); }
+// analiza completă a jobului: fiecare linie scriptică + extras, cu status
+function analyze(chunks,prog){ const scAll={}; for(const z in prog){ const sc=prog[z]?.sc||{}; for(const k in sc) scAll[k]={...sc[k],z}; } const clAll={}; for(const z in prog){ const cl=prog[z]?.cl||{}; for(const b in cl) clAll[b]=cl[b]; }
+  const rows=[]; for(const z in chunks){ chunks[z].forEach(l=>{ const rec=scAll[lineKey(l)]; const st=lineStatus(l,rec,!!clAll[l.bin]); rows.push({z,l,rec,st,fiz:rec?Number(rec.q):(st==='LIPSA'?0:null),dif:rec?Number(rec.q)-Number(l.q):(st==='LIPSA'?-Number(l.q):null)}); }); }
+  const extras=[]; for(const z in prog){ const ex=prog[z]?.ex||{}; for(const id in ex) extras.push({z,id,e:ex[id]}); }
+  return {rows,extras,clAll}; }
+function drawDash(){ const D=S.dash; const {rows,extras}=analyze(D.chunks,D.prog); const cnt=s=>rows.filter(r=>r.st===s).length; const scanned=rows.filter(r=>r.rec).length; const pct=rows.length?Math.round(100*scanned/rows.length):0;
+  const byZone={}; rows.forEach(r=>{ const o=byZone[r.z]=byZone[r.z]||{n:0,sc:0,ok:0,cant:0,loc:0,lipsa:0,plus:0}; o.n++; if(r.rec)o.sc++; if(r.st==='OK')o.ok++; if(r.st==='CANT')o.cant++; if(r.st==='LOC')o.loc++; if(r.st==='LIPSA')o.lipsa++; }); extras.forEach(x=>{ (byZone[x.z]=byZone[x.z]||{n:0,sc:0,ok:0,cant:0,loc:0,lipsa:0,plus:0}).plus++; });
+  const byUser={}; rows.forEach(r=>{ if(r.rec?.u){ const o=byUser[r.rec.u]=byUser[r.rec.u]||{n:0,last:0}; o.n++; o.last=Math.max(o.last,r.rec.t||0);} }); extras.forEach(x=>{ if(x.e.u){ const o=byUser[x.e.u]=byUser[x.e.u]||{n:0,last:0}; o.n++; o.last=Math.max(o.last,x.e.t||0);} });
+  const diffs=rows.filter(r=>['CANT','LOC','LIPSA'].includes(r.st)).length+extras.length;
+  $('#dbody').innerHTML=`<div class="kpis"><div class="kpi"><b>${pct}%</b><span>progres · ${scanned}/${rows.length} paleți</span></div><div class="kpi"><b style="color:var(--ok)">${cnt('OK')}</b><span>OK</span></div><div class="kpi"><b style="color:var(--warn)">${cnt('CANT')}</b><span>cantitate diferită</span></div><div class="kpi"><b style="color:var(--info)">${cnt('LOC')}</b><span>altă locație</span></div><div class="kpi"><b style="color:var(--err)">${cnt('LIPSA')}</b><span>lipsă</span></div><div class="kpi"><b style="color:#7b3fbf">${extras.length}</b><span>în plus</span></div><div class="kpi"><b>${cnt('NENUMARAT')}</b><span>nenumărat</span></div></div>
+  <div class="row" style="margin-bottom:10px"><button id="xls">⬇ Export Excel (scriptic vs fizic)</button>${isAdmin()&&diffs?`<button class="sec" id="recount">Job de reverificare (${diffs} diferențe)</button>`:''}</div>
+  <div class="card tablewrap"><h3>Pe zone</h3><table><thead><tr><th>Zonă</th><th>Paleți</th><th>Scanați</th><th>Progres</th><th>OK</th><th>Cant.</th><th>Altă loc.</th><th>Lipsă</th><th>În plus</th></tr></thead><tbody>${Object.keys(byZone).sort(cmpBin).map(z=>{const o=byZone[z];const p=o.n?Math.round(100*o.sc/o.n):0;return `<tr><td class="mono"><b>${esc(z)}</b></td><td>${o.n}</td><td>${o.sc}</td><td style="min-width:120px"><div class="bar"><i style="width:${p}%"></i></div><span class="small muted">${p}%</span></td><td>${o.ok}</td><td>${o.cant||''}</td><td>${o.loc||''}</td><td>${o.lipsa||''}</td><td>${o.plus||''}</td></tr>`;}).join('')}</tbody></table></div>
+  <div class="grid2"><div class="card tablewrap"><h3>Pe numărători</h3><table><thead><tr><th>Utilizator</th><th>Scanări</th><th>Ultima</th></tr></thead><tbody>${Object.keys(byUser).sort((a,b)=>byUser[b].n-byUser[a].n).map(u=>`<tr><td>${esc(u)}</td><td>${byUser[u].n}</td><td>${fmtT(byUser[u].last)}</td></tr>`).join('')||'<tr><td colspan="3" class="muted">Nicio scanare încă</td></tr>'}</tbody></table></div>
+  <div class="card tablewrap"><h3>Ultimele diferențe</h3><table><thead><tr><th>Status</th><th>Articol</th><th>Locație</th><th>Scriptic</th><th>Fizic</th><th>Cine</th></tr></thead><tbody>${[...rows.filter(r=>['CANT','LOC','LIPSA'].includes(r.st)).map(r=>({st:r.st,m:r.l.m,bin:r.l.bin+(r.rec&&r.rec.bin!==r.l.bin?' → '+r.rec.bin:''),s:r.l.q,f:r.fiz,u:r.rec?.u||'',t:r.rec?.t||0})),...extras.map(x=>({st:'PLUS',m:x.e.m,bin:x.e.bin,s:'',f:x.e.q,u:x.e.u,t:x.e.t}))].sort((a,b)=>b.t-a.t).slice(0,40).map(r=>`<tr><td><span class="pill ${STATUS_KIND[r.st]}">${STATUS_RO[r.st]}</span></td><td class="mono">${esc(r.m)}</td><td class="mono">${esc(r.bin)}</td><td>${esc(r.s)}</td><td>${esc(r.f)}</td><td class="small">${esc(r.u)}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">Nicio diferență</td></tr>'}</tbody></table></div></div>`;
+  $('#xls').onclick=()=>exportExcel(D.job,D.chunks,D.prog); const rc=$('#recount'); if(rc) rc.onclick=()=>createRecount(D.job,D.chunks,D.prog);
+}
+function exportExcel(job,chunks,prog){ const {rows,extras,clAll}=analyze(chunks,prog);
+  const H=[...COLS,'Fizic','Diferență','Status','Locație fizică','Scanat de','Data/ora','Observații'];
+  const rowOf=r=>{const l=r.l,rec=r.rec; return [l.m,l.pl,l.sl,l.b,l.d,l.st,l.bin,l.q,l.u,l.gr,l.su,r.fiz??'',r.dif??'',STATUS_RO[r.st],rec?rec.bin:'',rec?.u||(r.st==='LIPSA'?(clAll[l.bin]?.u||''):''),rec?fmtF(rec.t):(r.st==='LIPSA'?fmtF(clAll[l.bin]?.t):''),(rec?.man?'cantitate introdusă manual':'')+(r.st==='LOC'?' scriptic '+l.bin+' / fizic '+rec.bin:'')+(r.st==='LIPSA'&&clAll[l.bin]?.e?' locație raportată goală':'')]; };
+  const exOf=x=>[x.e.m,'','',x.e.b||'',x.e.d||'','',x.e.bin,0,x.e.uom||'','',x.e.su||'',x.e.q,x.e.q,STATUS_RO.PLUS,x.e.bin,x.e.u||'',fmtF(x.e.t),'palet adăugat manual la scanare'];
+  const all=[H,...rows.sort((a,b)=>cmpBin(a.l.bin,b.l.bin)).map(rowOf),...extras.map(exOf)];
+  const dif=[H,...rows.filter(r=>['CANT','LOC','LIPSA'].includes(r.st)).map(rowOf),...extras.map(exOf)];
+  const byZone={}; rows.forEach(r=>{const o=byZone[r.z]=byZone[r.z]||{n:0,sc:0,ok:0,cant:0,loc:0,lipsa:0,nen:0,plus:0,sq:0,fq:0}; o.n++; o.sq+=Number(r.l.q); if(r.rec){o.sc++;o.fq+=Number(r.rec.q);} o[{OK:'ok',CANT:'cant',LOC:'loc',LIPSA:'lipsa',NENUMARAT:'nen'}[r.st]]++;}); extras.forEach(x=>{const o=byZone[x.z]=byZone[x.z]||{n:0,sc:0,ok:0,cant:0,loc:0,lipsa:0,nen:0,plus:0,sq:0,fq:0}; o.plus++; o.fq+=Number(x.e.q);});
+  const sum=[['Zonă','Paleți scriptic','Scanați','OK','Cantitate diferită','Altă locație','Lipsă','Nenumărat','În plus','Buc. scriptic','Buc. fizic','Diferență buc.'],...Object.keys(byZone).sort(cmpBin).map(z=>{const o=byZone[z];return [z,o.n,o.sc,o.ok,o.cant,o.loc,o.lipsa,o.nen,o.plus,o.sq,o.fq,o.fq-o.sq];})];
+  const jur=[['Data/ora','Utilizator','Tip','SU','Articol','Locație','Cantitate'],...[...rows.filter(r=>r.rec).map(r=>[r.rec.t,r.rec.u,STATUS_RO[r.st],r.l.su,r.l.m,r.rec.bin,r.rec.q]),...extras.map(x=>[x.e.t,x.e.u,'În plus',x.e.su,x.e.m,x.e.bin,x.e.q])].sort((a,b)=>a[0]-b[0]).map(r=>[fmtF(r[0]),...r.slice(1)])];
+  const wb=XLSX.utils.book_new(); const add=(name,data,widths)=>{ const ws=XLSX.utils.aoa_to_sheet(data); ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(1,data.length-1),c:data[0].length-1}})}; ws['!cols']=(widths||data[0].map(()=>({wch:14}))); ws['!freeze']={xSplit:0,ySplit:1}; XLSX.utils.book_append_sheet(wb,ws,name); };
+  const w=[16,7,8,12,34,8,10,10,6,11,16,8,10,16,12,14,14,30].map(x=>({wch:x}));
+  add('Scriptic vs Fizic',all,w); add('Diferente',dif,w); add('Sumar zone',sum); add('Jurnal scanari',jur);
+  XLSX.writeFile(wb,`Inventar_${slugify(job.name)}_${new Date().toISOString().slice(0,10)}.xlsx`); }
+async function createRecount(job,chunks,prog){ const {rows,extras}=analyze(chunks,prog); const pick=rows.filter(r=>['CANT','LOC','LIPSA'].includes(r.st)); if(!pick.length&&!extras.length){toast('Nu sunt diferențe.');return;}
+  if(!await confirmDlg('Creezi jobul de reverificare?',pick.length+' linii cu diferențe + '+extras.length+' paleți în plus. Locațiile folosite: cea scriptică (pentru lipsă/cantitate) sau cea fizică (altă locație / în plus).','Creează')) return;
+  const lines=[]; let i=0; pick.forEach(r=>{ const l={...r.l,i:i++}; if(r.st==='LOC') l.bin=r.rec.bin; lines.push(l); }); extras.forEach(x=>lines.push({i:i++,m:x.e.m,pl:'',sl:'',b:x.e.b||'',d:x.e.d||'',st:'',bin:x.e.bin,q:Number(x.e.q),u:x.e.uom||'',gr:'',su:x.e.su||''}));
+  const ch={}; lines.forEach(l=>{ const z=zoneOf(l.bin); (ch[z]=ch[z]||[]).push(l); });
+  const nj={id:uid(),name:'Reverificare – '+job.name,created:now(),createdBy:S.user.name,status:'activ',source:job.name,parent:job.id,totalLines:lines.length,strict:job.strict!==false,zones:Object.keys(ch).sort(cmpBin).map(z=>({z,n:ch[z].length,bins:new Set(ch[z].map(l=>l.bin)).size,bulk:isBulkZone(z)}))};
+  await Store.createJob(nj,ch); toast('Job de reverificare creat'); }
+
+/* ============================ BOOT ============================ */
+(async function boot(){
+  try{ Store = CFG.demo ? makeDemoStore() : await makeFirebaseStore(); }catch(e){ app.innerHTML='<div class="login card">Nu pot porni Firebase: '+esc(e.message)+'<br>Verifică config.js.</div>'; return; }
+  await Store.init();
+  if('serviceWorker' in navigator && location.protocol==='https:'){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+  Store.onAuth(async u=>{ S.user=u; if(S.unsubJobs){S.unsubJobs();S.unsubJobs=null;} stopPda(); stopDash();
+    if(!u){ const done=await Store.isSetupDone(); renderLogin(!done); return; }
+    if(u.missing){ app.innerHTML='<div class="login card">Contul există în Firebase Auth dar nu are fișă de utilizator (users/'+esc(u.id)+'). Roagă administratorul să o creeze.<br><br><button id="lo">Ieși</button></div>'; $('#lo').onclick=()=>Store.logout(); return; }
+    if(u.active===false){ app.innerHTML='<div class="login card">Utilizator dezactivat.<br><br><button id="lo">Ieși</button></div>'; $('#lo').onclick=()=>Store.logout(); return; }
+    S.unsubJobs=Store.listenJobs(jobs=>{ S.jobs=jobs; if(S.tab==='jobs') renderJobs(); else if(S.tab==='pda'&&!S.pda.zone) renderPdaHome(); else if(S.tab==='dash'&&!S.dash.job) renderDashHome(); });
+    renderShell(); });
+})();
+</script>
+</body>
+</html>

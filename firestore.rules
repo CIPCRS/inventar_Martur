@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function signedIn() { return request.auth != null; }
+    function me() { return get(/databases/$(db)/documents/users/$(request.auth.uid)).data; }
+    function isAdmin() { return signedIn() && me().role == 'admin' && me().active != false; }
+    function isActive() { return signedIn() && me().active != false; }
+
+    // config/locked: există după prima configurare (blochează crearea altui admin din afara aplicației)
+    match /config/{doc} {
+      allow get: if true;
+      allow list: if signedIn();
+      allow create: if signedIn() && !exists(/databases/$(db)/documents/config/locked);
+      allow update, delete: if isAdmin();
+    }
+    match /users/{uid} {
+      allow read: if signedIn();
+      // adminul creează utilizatori; primul admin se creează singur doar înainte de "locked"
+      allow create: if isAdmin()
+        || (request.auth.uid == uid && request.resource.data.role == 'admin' && !exists(/databases/$(db)/documents/config/locked));
+      allow update, delete: if isAdmin();
+    }
+    match /jobs/{job} {
+      allow read: if isActive();
+      allow create, update, delete: if isAdmin();
+      match /chunks/{zone} {
+        allow read: if isActive();
+        allow write: if isAdmin();
+      }
+      match /progress/{zone} {
+        allow read: if isActive();
+        allow write: if isActive();
+      }
+    }
+  }
+}
