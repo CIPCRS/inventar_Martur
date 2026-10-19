@@ -86,7 +86,7 @@ tr.click{cursor:pointer} tr.click:hover{background:#f6f8fb}
 <script type="module">
 /* ============================ UTIL ============================ */
 const CFG = window.INVENTAR_CONFIG || {demo:true};
-const APP_VERSION = 'v2.2 · 19.10.2026';
+const APP_VERSION = 'v2.3 · 19.10.2026';
 const $ = (s, el=document)=>el.querySelector(s);
 const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const now = ()=>Date.now();
@@ -436,14 +436,16 @@ let kbuf='',kT; document.addEventListener('keydown',e=>{ if(S.tab!=='pda'||!S.pd
 function stopDash(){ if(S.dash.unsub){S.dash.unsub();S.dash.unsub=null;} }
 const dayKey=t=>{ const d=new Date(t); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 // joburile „din ziua” aleasă: create până în acea zi și încă active în acea zi (neînchise înainte de ea)
-function jobsOnDay(day){ if(day>dayKey(now())) return []; const end=new Date(day+'T23:59:59').getTime(); return S.jobs.filter(j=>j.status!=='sters'&&dayKey(j.created)<=day&&(j.status==='activ'||!j.closedAt||j.closedAt>=new Date(day+'T00:00:00').getTime())).filter(j=>j.created<=end).sort((a,b)=>b.created-a.created); }
+// joburile active într-un interval [from, to] (zile): create până la sfârșitul intervalului și neînchise înainte de început
+function jobsInRange(from,to){ to=to||from; if(to<from) to=from; if(from>dayKey(now())) return []; const end=new Date(to+'T23:59:59').getTime(), start=new Date(from+'T00:00:00').getTime(); return S.jobs.filter(j=>j.status!=='sters'&&j.created<=end&&(j.status==='activ'||!j.closedAt||j.closedAt>=start)).sort((a,b)=>b.created-a.created); }
+function jobsOnDay(day){ return jobsInRange(day,day); }
 function renderDashHome(){ const p=$('#page'); const D=S.dash;
   if(D.job&&S.jobs.some(j=>j.id===D.job.id&&j.status!=='sters')){ p.innerHTML=`<div class="row" style="margin-bottom:10px"><button class="ghost" id="dback">◀ Joburi pe zi</button><h2 class="grow">${esc(D.job.name)}</h2><span class="pill ${D.job.status==='activ'?'ok':'grey'}">${D.job.status}</span></div><div id="dbody"></div>`; $('#dback').onclick=()=>{ stopDash(); D.job=null; renderDashHome(); }; loadDash(); return; }
-  D.job=null; D.day=D.day||dayKey(now()); const jobs=jobsOnDay(D.day);
-  p.innerHTML=`<div class="row" style="margin-bottom:10px"><h2>Dashboard</h2><label style="margin:0" class="right">Ziua</label><input type="date" id="dday" value="${D.day}" style="width:auto"></div>
-  <div class="muted small" style="margin-bottom:8px">Joburile active în ziua aleasă. Alege un job pentru detalii.</div>
-  ${jobs.length?jobs.map(j=>`<div class="card" style="cursor:pointer" data-dj="${j.id}"><div class="row"><div class="grow"><b>${esc(j.name)}</b><div class="small muted">${j.zones.length} zone · ${j.totalLines} paleți · creat ${fmtT(j.created)} de ${esc(j.createdBy||'')}${j.closedAt?' · închis '+fmtT(j.closedAt):''}</div></div><span class="pill ${j.status==='activ'?'ok':'grey'}">${j.status}</span></div></div>`).join(''):'<div class="card muted">'+(D.day>dayKey(now())?'Nimic — ziua aleasă e în viitor.':'Niciun job activ în această zi.')+'</div>'}`;
-  $('#dday').onchange=e=>{ D.day=e.target.value; renderDashHome(); };
+  D.job=null; D.day=D.day||dayKey(now()); D.dayTo=D.dayTo||''; const jobs=jobsInRange(D.day,D.dayTo||D.day);
+  p.innerHTML=`<div class="row" style="margin-bottom:10px"><h2>Dashboard</h2><label style="margin:0" class="right">Ziua</label><input type="date" id="dday" value="${D.day}" style="width:auto"><label style="margin:0">până la</label><input type="date" id="ddayto" value="${D.dayTo}" style="width:auto" title="opțional — pentru o perioadă"></div>
+  <div class="row" style="margin-bottom:8px"><span class="muted small grow">Inventarele active în ${D.dayTo&&D.dayTo!==D.day?'perioada aleasă':'ziua aleasă'}. Alege unul pentru detalii, sau exportă-le pe toate într-un singur Excel (overall pe zi/perioadă).</span>${isSup()&&jobs.length?`<button class="sec" id="pxls">⬇ Export Excel ${D.dayTo&&D.dayTo!==D.day?'perioadă':'zi'} (${jobs.length})</button>`:''}</div>
+  ${jobs.length?jobs.map(j=>`<div class="card" style="cursor:pointer" data-dj="${j.id}"><div class="row"><div class="grow"><b>${esc(j.name)}</b><div class="small muted">${j.zones.length} zone · ${j.totalLines} paleți · creat ${fmtT(j.created)} de ${esc(j.createdBy||'')}${j.closedAt?' · închis '+fmtT(j.closedAt):''}</div></div><span class="pill ${j.status==='activ'?'ok':'grey'}">${j.status}</span></div></div>`).join(''):'<div class="card muted">'+(D.day>dayKey(now())?'Nimic — ziua aleasă e în viitor.':'Niciun inventar activ în intervalul ales.')+'</div>'}`;
+  $('#dday').onchange=e=>{ D.day=e.target.value; renderDashHome(); }; $('#ddayto').onchange=e=>{ D.dayTo=e.target.value; renderDashHome(); }; const px=$('#pxls'); if(px) px.onclick=()=>exportPeriod(D.day,D.dayTo||D.day);
   p.querySelectorAll('[data-dj]').forEach(c=>c.onclick=()=>{ D.job=S.jobs.find(j=>j.id===c.dataset.dj); renderDashHome(); }); }
 async function loadDash(){ stopDash(); const D=S.dash; $('#dbody').innerHTML='<div class="card">Se încarcă…</div>'; D.chunks=await Store.getChunks(D.job.id); D.users=(await Store.listUsers()).filter(u=>u.active!==false).sort((a,b)=>a.name.localeCompare(b.name)); D.prog={}; D.asgUser=D.asgUser||''; $('#dbody').innerHTML='<div id="asgbox"></div><div id="dstats"></div>'; D.unsub=Store.listenProgress(D.job.id,null,(z,d)=>{ D.prog[z]=d; if(S.tab==='dash'&&D.job) drawDash(); }); drawDash(); drawAssign(); }
 // alocarea zonelor pe numărători: alegi userul, bifezi zonele lui (inclusiv vrac/speciale), salvezi
@@ -477,23 +479,39 @@ function drawDash(){ const D=S.dash; const {rows,extras}=analyze(D.chunks,D.prog
    ${D.zoneDetail?`<table style="margin-top:6px"><thead><tr><th>Zonă</th><th>Alocat la</th><th>Paleți</th><th>Scanați</th><th>Progres</th><th>OK</th><th>Cant.</th><th>Altă loc.</th><th>Lipsă</th><th>În plus</th></tr></thead><tbody>${Object.keys(byZone).sort(cmpZone).map(z=>{const o=byZone[z];const p=o.n?Math.round(100*o.sc/o.n):0;return `<tr><td class="mono"><b>${esc(zlabel(D.job,z))}</b></td><td>${esc((D.job.assign||{})[z]?.name||'—')}</td><td>${o.n}</td><td>${o.sc}</td><td style="min-width:120px"><div class="bar"><i style="width:${p}%"></i></div><span class="small muted">${p}%</span></td><td>${o.ok}</td><td>${o.cant||''}</td><td>${o.loc||''}</td><td>${o.lipsa||''}</td><td>${o.plus||''}</td></tr>`;}).join('')}</tbody></table>`:''}</div>
   <div class="card tablewrap"><h3>Ultimele diferențe</h3><table><thead><tr><th>Status</th><th>Articol</th><th>Locație</th><th>Scriptic</th><th>Fizic</th><th>Cine</th></tr></thead><tbody>${[...rows.filter(r=>['CANT','LOC','LIPSA'].includes(r.st)).map(r=>({st:r.st,m:r.l.m,bin:r.l.bin+(r.rec&&r.rec.bin!==r.l.bin?' → '+r.rec.bin:''),s:r.l.q,f:r.fiz,u:r.rec?.u||'',t:r.rec?.t||0})),...extras.map(x=>({st:'PLUS',m:x.e.m,bin:x.e.bin,s:'',f:x.e.q,u:x.e.u,t:x.e.t}))].sort((a,b)=>b.t-a.t).slice(0,40).map(r=>`<tr><td><span class="pill ${STATUS_KIND[r.st]}">${STATUS_RO[r.st]}</span></td><td class="mono">${esc(r.m)}</td><td class="mono">${esc(r.bin)}</td><td>${esc(r.s)}</td><td>${esc(r.f)}</td><td class="small">${esc(r.u)}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">Nicio diferență</td></tr>'}</tbody></table></div>`;
   const zd=$('#zdet'); if(zd) zd.onclick=e=>{ e.preventDefault(); D.zoneDetail=!D.zoneDetail; drawDash(); };
-  $('#xls').onclick=()=>exportExcel(D.job,D.chunks,D.prog); const rc=$('#recount'); if(rc) rc.onclick=()=>createRecount(D.job,D.chunks,D.prog);
+  $('#xls').onclick=()=>exportExcel([{job:D.job,chunks:D.chunks,prog:D.prog}]); const rc=$('#recount'); if(rc) rc.onclick=()=>createRecount(D.job,D.chunks,D.prog);
 
 }
-function exportExcel(job,chunks,prog){ const {rows,extras,clAll}=analyze(chunks,prog);
-  const H=[...COLS,'Fizic','Diferență','Status','Locație fizică','Scanat de','Data/ora','Observații'];
-  const rowOf=r=>{const l=r.l,rec=r.rec; return [l.m,l.pl,l.sl,l.b,l.d,l.st,l.bin,l.q,l.u,l.gr,l.su,r.fiz??'',r.dif??'',STATUS_RO[r.st],rec?rec.bin:'',rec?.u||(r.st==='LIPSA'?(clAll[l.bin]?.u||''):''),rec?fmtF(rec.t):(r.st==='LIPSA'?fmtF(clAll[l.bin]?.t):''),(rec?.man?'cantitate introdusă manual':'')+(r.st==='LOC'?' scriptic '+l.bin+' / fizic '+rec.bin:'')+(r.st==='LIPSA'&&clAll[l.bin]?.e?' locație raportată goală':'')]; };
-  const knownBins=new Set(); for(const z in chunks) chunks[z].forEach(l=>knownBins.add(l.bin));
-  const exOf=x=>[x.e.m,'','',x.e.b||'',x.e.d||'','',x.e.bin,0,x.e.uom||'','',x.e.su||'',x.e.q,x.e.q,STATUS_RO.PLUS,x.e.bin,x.e.u||'',fmtF(x.e.t),'palet adăugat manual la scanare'+(knownBins.has(x.e.bin)?'':' · locație nouă (nu era în export)')];
-  const all=[H,...rows.sort((a,b)=>cmpBin(a.l.bin,b.l.bin)).map(rowOf),...extras.map(exOf)];
-  const dif=[H,...rows.filter(r=>['CANT','LOC','LIPSA'].includes(r.st)).map(rowOf),...extras.map(exOf)];
-  const byZone={}; rows.forEach(r=>{const o=byZone[r.z]=byZone[r.z]||{n:0,sc:0,ok:0,cant:0,loc:0,lipsa:0,nen:0,plus:0,sq:0,fq:0}; o.n++; o.sq+=Number(r.l.q); if(r.rec){o.sc++;o.fq+=Number(r.rec.q);} o[{OK:'ok',CANT:'cant',LOC:'loc',LIPSA:'lipsa',NENUMARAT:'nen'}[r.st]]++;}); extras.forEach(x=>{const o=byZone[x.z]=byZone[x.z]||{n:0,sc:0,ok:0,cant:0,loc:0,lipsa:0,nen:0,plus:0,sq:0,fq:0}; o.plus++; o.fq+=Number(x.e.q);});
-  const sum=[['Zonă','Alocat la','Paleți scriptic','Scanați','OK','Cantitate diferită','Altă locație','Lipsă','Nenumărat','În plus','Buc. scriptic','Buc. fizic','Diferență buc.'],...Object.keys(byZone).sort(cmpZone).map(z=>{const o=byZone[z];return [zlabel(job,z),(job.assign||{})[z]?.name||'',o.n,o.sc,o.ok,o.cant,o.loc,o.lipsa,o.nen,o.plus,o.sq,o.fq,o.fq-o.sq];})];
-  const jur=[['Data/ora','Utilizator','Tip','SU','Articol','Locație','Cantitate'],...[...rows.filter(r=>r.rec).map(r=>[r.rec.t,r.rec.u,STATUS_RO[r.st],r.l.su,r.l.m,r.rec.bin,r.rec.q]),...extras.map(x=>[x.e.t,x.e.u,'În plus',x.e.su,x.e.m,x.e.bin,x.e.q])].sort((a,b)=>a[0]-b[0]).map(r=>[fmtF(r[0]),...r.slice(1)])];
+// Export Excel: unul sau mai multe joburi (zi / perioadă) în același workbook, cu coloana "Inventar" + sumar pe joburi
+function exportExcel(items,fname){ if(!Array.isArray(items)) items=[items]; const multi=items.length>1;
+  const H=['Inventar',...COLS,'Fizic','Diferență','Status','Locație fizică','Scanat de','Data/ora','Observații'];
+  const all=[H], dif=[H], jur=[['Inventar','Data/ora','Utilizator','Tip','SU','Articol','Locație','Cantitate']];
+  const sumZ=[['Inventar','Zonă','Alocat la','Paleți scriptic','Scanați','OK','Cantitate diferită','Altă locație','Lipsă','Nenumărat','În plus','Buc. scriptic','Buc. fizic','Diferență buc.']];
+  const sumJ=[['Inventar','Creat','Status','Paleți scriptic','Scanați','Progres %','OK','Cantitate diferită','Altă locație','Lipsă','Nenumărat','În plus','Buc. scriptic','Buc. fizic','Diferență buc.']];
+  const sumU={}; const tot={n:0,sc:0,ok:0,cant:0,loc:0,lipsa:0,nen:0,plus:0,sq:0,fq:0};
+  const acc=(o,r)=>{ o.n++; o.sq+=Number(r.l.q); if(r.rec){o.sc++;o.fq+=Number(r.rec.q);} o[{OK:'ok',CANT:'cant',LOC:'loc',LIPSA:'lipsa',NENUMARAT:'nen'}[r.st]]++; };
+  const blank=()=>({n:0,sc:0,ok:0,cant:0,loc:0,lipsa:0,nen:0,plus:0,sq:0,fq:0});
+  items.forEach(({job,chunks,prog})=>{ const {rows,extras,clAll}=analyze(chunks,prog); const J=job.name;
+    const rowOf=r=>{const l=r.l,rec=r.rec; return [J,l.m,l.pl,l.sl,l.b,l.d,l.st,l.bin,l.q,l.u,l.gr,l.su,r.fiz??'',r.dif??'',STATUS_RO[r.st],rec?rec.bin:'',rec?.u||(r.st==='LIPSA'?(clAll[l.bin]?.u||''):''),rec?fmtF(rec.t):(r.st==='LIPSA'?fmtF(clAll[l.bin]?.t):''),(rec?.man?'cantitate introdusă manual':'')+(r.st==='LOC'?' scriptic '+l.bin+' / fizic '+rec.bin:'')+(r.st==='LIPSA'&&clAll[l.bin]?.e?' locație raportată goală':'')]; };
+    const knownBins=new Set(); for(const z in chunks) chunks[z].forEach(l=>knownBins.add(l.bin));
+    const exOf=x=>[J,x.e.m,'','',x.e.b||'',x.e.d||'','',x.e.bin,0,x.e.uom||'','',x.e.su||'',x.e.q,x.e.q,STATUS_RO.PLUS,x.e.bin,x.e.u||'',fmtF(x.e.t),'palet adăugat manual la scanare'+(knownBins.has(x.e.bin)?'':' · locație nouă (nu era în export)')];
+    rows.sort((a,b)=>cmpBin(a.l.bin,b.l.bin)); all.push(...rows.map(rowOf),...extras.map(exOf)); dif.push(...rows.filter(r=>['CANT','LOC','LIPSA'].includes(r.st)).map(rowOf),...extras.map(exOf));
+    const byZone={}; const jt=blank(); rows.forEach(r=>{ acc(byZone[r.z]=byZone[r.z]||blank(),r); acc(jt,r); acc(tot,r); const u=r.rec?.u; if(u){ const o=sumU[u]=sumU[u]||{...blank(),last:0}; acc(o,r); o.last=Math.max(o.last,r.rec.t||0);} });
+    extras.forEach(x=>{ (byZone[x.z]=byZone[x.z]||blank()).plus++; byZone[x.z].fq+=Number(x.e.q); jt.plus++; jt.fq+=Number(x.e.q); tot.plus++; tot.fq+=Number(x.e.q); if(x.e.u){ const o=sumU[x.e.u]=sumU[x.e.u]||{...blank(),last:0}; o.plus++; o.fq+=Number(x.e.q); o.last=Math.max(o.last,x.e.t||0);} });
+    Object.keys(byZone).sort(cmpZone).forEach(z=>{const o=byZone[z]; sumZ.push([J,zlabel(job,z),(job.assign||{})[z]?.name||'',o.n,o.sc,o.ok,o.cant,o.loc,o.lipsa,o.nen,o.plus,o.sq,o.fq,o.fq-o.sq]);});
+    sumJ.push([J,fmtF(job.created),job.status,jt.n,jt.sc,jt.n?Math.round(100*jt.sc/jt.n):0,jt.ok,jt.cant,jt.loc,jt.lipsa,jt.nen,jt.plus,jt.sq,jt.fq,jt.fq-jt.sq]);
+    [...rows.filter(r=>r.rec).map(r=>[r.rec.t,J,r.rec.u,STATUS_RO[r.st],r.l.su,r.l.m,r.rec.bin,r.rec.q]),...extras.map(x=>[x.e.t,J,x.e.u,'În plus',x.e.su,x.e.m,x.e.bin,x.e.q])].sort((a,b)=>a[0]-b[0]).forEach(r=>jur.push([r[1],fmtF(r[0]),...r.slice(2)])); });
+  sumJ.push(['TOTAL','','',tot.n,tot.sc,tot.n?Math.round(100*tot.sc/tot.n):0,tot.ok,tot.cant,tot.loc,tot.lipsa,tot.nen,tot.plus,tot.sq,tot.fq,tot.fq-tot.sq]);
+  const sumUsers=[['Numărător','Paleți scanați','OK','Cantitate diferită','Altă locație','În plus','Buc. fizic','Ultima scanare'],...Object.keys(sumU).sort().map(u=>{const o=sumU[u];return [u,o.sc,o.ok,o.cant,o.loc,o.plus,o.fq,fmtF(o.last)];})];
   const wb=XLSX.utils.book_new(); const add=(name,data,widths)=>{ const ws=XLSX.utils.aoa_to_sheet(data); ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(1,data.length-1),c:data[0].length-1}})}; ws['!cols']=(widths||data[0].map(()=>({wch:14}))); ws['!freeze']={xSplit:0,ySplit:1}; XLSX.utils.book_append_sheet(wb,ws,name); };
-  const w=[16,7,8,12,34,8,10,10,6,11,16,8,10,16,12,14,14,30].map(x=>({wch:x}));
-  add('Scriptic vs Fizic',all,w); add('Diferente',dif,w); add('Sumar zone',sum); add('Jurnal scanari',jur);
-  XLSX.writeFile(wb,`Inventar_${slugify(job.name)}_${new Date().toISOString().slice(0,10)}.xlsx`); }
+  const w=[22,16,7,8,12,34,8,10,10,6,11,16,8,10,16,12,14,16,30].map(x=>({wch:x}));
+  add('Sumar inventare',sumJ,[22,16,8,12,9,9,8,12,10,8,10,8,12,10,12].map(x=>({wch:x}))); add('Scriptic vs Fizic',all,w); add('Diferente',dif,w); add('Sumar zone',sumZ); add('Sumar numaratori',sumUsers); add('Jurnal scanari',jur);
+  XLSX.writeFile(wb,(fname||`Inventar_${slugify(items[0].job.name)}`)+`_${new Date().toISOString().slice(0,10)}.xlsx`); }
+// export consolidat pe o zi sau o perioadă: toate joburile active în interval
+async function exportPeriod(from,to){ const jobs=jobsInRange(from,to); if(!jobs.length){ toast('Niciun inventar în perioada aleasă.'); return; }
+  const btn=$('#pxls'); if(btn){ btn.disabled=true; btn.textContent='Se pregătește…'; }
+  try{ const items=[]; for(const job of jobs){ const chunks=await Store.getChunks(job.id); const prog=await Store.getProgressAll(job.id); items.push({job,chunks,prog}); } exportExcel(items,'Inventar_'+from+(to&&to!==from?'_'+to:'')); }
+  catch(e){ toast('Eroare la export: '+e.message); } finally{ if(btn){ btn.disabled=false; btn.textContent='⬇ Export Excel perioadă ('+jobs.length+')'; } } }
 async function createRecount(job,chunks,prog){ const {rows,extras}=analyze(chunks,prog); const pick=rows.filter(r=>['CANT','LOC','LIPSA'].includes(r.st)); if(!pick.length&&!extras.length){toast('Nu sunt diferențe.');return;}
   if(!await confirmDlg('Creezi jobul de reverificare?',pick.length+' linii cu diferențe + '+extras.length+' paleți în plus. Locațiile folosite: cea scriptică (pentru lipsă/cantitate) sau cea fizică (altă locație / în plus).','Creează')) return;
   const lines=[]; let i=0; pick.forEach(r=>{ const l={...r.l,i:i++}; if(r.st==='LOC') l.bin=r.rec.bin; lines.push(l); }); extras.forEach(x=>lines.push({i:i++,m:x.e.m,pl:'',sl:'',b:x.e.b||'',d:x.e.d||'',st:'',bin:x.e.bin,q:Number(x.e.q),u:x.e.uom||'',gr:'',su:x.e.su||''}));
