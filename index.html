@@ -86,7 +86,7 @@ tr.click{cursor:pointer} tr.click:hover{background:#f6f8fb}
 <script type="module">
 /* ============================ UTIL ============================ */
 const CFG = window.INVENTAR_CONFIG || {demo:true};
-const APP_VERSION = 'v2.1 · 19.10.2026';
+const APP_VERSION = 'v2.2 · 19.10.2026';
 const $ = (s, el=document)=>el.querySelector(s);
 const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const now = ()=>Date.now();
@@ -205,7 +205,7 @@ async function makeFirebaseStore(){
 
 /* ============================ APP STATE ============================ */
 const S = { user:null, tab:null, jobs:[], unsubJobs:null,
-  pda:{ job:null, chunks:null, suIndex:null, binIndex:null, zone:null, bins:[], binIdx:0, binConfirmed:false, prog:{}, progAll:{}, unsub:null, strict:true, reverse:false, lastAction:null, foreign:[] },
+  pda:{ job:null, chunks:null, suIndex:null, binIndex:null, zones:[], route:false, bins:[], binIdx:0, binConfirmed:false, progAll:{}, unsubs:[], strict:true, reverse:false, lastAction:null },
   dash:{ job:null, chunks:null, prog:{}, unsub:null } };
 const app=$('#app');
 const isAdmin=()=>S.user?.role==='admin'; const isSup=()=>S.user?.role==='supervizor'||isAdmin();
@@ -307,117 +307,119 @@ async function renderUsers(){
 }
 
 /* ============================ PDA — NUMĂRARE ============================ */
-function stopPda(){ if(S.pda.unsub){S.pda.unsub();S.pda.unsub=null;} }
+// Numărătorul vede un singur inventar: toate zonele alocate lui, concatenate în ordine (parter → etaje → vrac)
+function stopPda(){ (S.pda.unsubs||[]).forEach(u=>{ try{u();}catch(e){} }); S.pda.unsubs=[]; S.pda.route=false; }
+// listă compactă de zone: A,B,C parter -> "A–C parter"
+function zonesCompact(keys){ const parts=[]; for(const kind of ['P','E']){ const ls=keys.filter(k=>zoneKind(k)===kind).map(k=>k.split('-')[0]).sort(); if(!ls.length) continue; const rs=[]; let s=ls[0],p=ls[0]; for(let i=1;i<=ls.length;i++){ const c=ls[i]; if(c&&c.length===1&&p.length===1&&c.charCodeAt(0)===p.charCodeAt(0)+1){ p=c; continue; } rs.push(s===p?s:s+'–'+p); s=p=c; } parts.push(rs.join(', ')+(kind==='P'?' parter':' etaje')); } keys.filter(k=>zoneKind(k)==='S').sort(cmpZone).forEach(k=>parts.push(zoneLabel(k))); return parts.join(' · '); }
 function renderPdaHome(){
   const p=$('#page'); const jobs=activeJobs().filter(j=>myZones(j).length);
-  if(S.pda.job && jobs.some(j=>j.id===S.pda.job.id) && S.pda.zone){ renderPdaCount(); return; }
-  p.innerHTML=`<h2>Alege jobul de inventar</h2>${jobs.length?'':'<div class="card muted">'+(isSup()?'Nu există joburi active.':'Nu ai nicio zonă alocată într-un job activ. Cere administratorului să-ți aloce o zonă.')+'</div>'}${jobs.map(j=>{const mz=myZones(j);return `<div class="card" style="cursor:pointer" data-job="${j.id}"><b>${esc(j.name)}</b><div class="small muted">${isSup()?j.zones.length+' zone':'zonele tale: '+mz.map(z=>z.label||zoneLabel(z.z)).join(', ')} · ${j.totalLines} paleți · creat ${fmtT(j.created)}</div></div>`;}).join('')}`;
+  if(S.pda.job && jobs.some(j=>j.id===S.pda.job.id) && S.pda.route){ renderPdaCount(); return; }
+  p.innerHTML=`<h2>Alege inventarul</h2>${jobs.length?'':'<div class="card muted">'+(isSup()?'Nu există joburi active.':'Nu ai nicio zonă alocată într-un inventar activ. Cere administratorului să-ți aloce zone.')+'</div>'}${jobs.map(j=>{const mz=myZones(j); const n=mz.reduce((a,z)=>a+z.n,0); return `<div class="card" style="cursor:pointer" data-job="${j.id}"><b>${esc(j.name)}</b><div class="small muted">${esc(zonesCompact(mz.map(z=>z.z)))}</div><div class="small muted">${n} paleți · creat ${fmtT(j.created)}</div></div>`;}).join('')}`;
   p.querySelectorAll('[data-job]').forEach(c=>c.onclick=()=>openPdaJob(S.jobs.find(j=>j.id===c.dataset.job)));
 }
 async function openPdaJob(job){
-  const p=$('#page'); p.innerHTML='<div class="card">Se încarcă jobul…</div>';
-  stopPda(); const P=S.pda; P.job=job; P.zone=null; P.foreign=[]; P.strict=job.strict!==false;
+  const p=$('#page'); p.innerHTML='<div class="card">Se încarcă inventarul…</div>';
+  stopPda(); const P=S.pda; P.job=job; P.strict=job.strict!==false; P.lastAction=null; P.binConfirmed=false;
+  P.zones=myZones(job).map(z=>z.z).sort(cmpZone);
+  if(!P.zones.length){ p.innerHTML='<div class="card muted">Nu ai zone alocate în acest inventar.</div><button class="sec" id="back">◀ Înapoi</button>'; $('#back').onclick=()=>{ P.job=null; renderPdaHome(); }; return; }
   P.chunks=await Store.getChunks(job.id); P.progAll=await Store.getProgressAll(job.id);
   P.suIndex={}; P.binIndex={}; for(const z in P.chunks){ P.chunks[z].forEach(l=>{ if(l.su) P.suIndex[l.su]={z,l}; (P.binIndex[l.bin]=P.binIndex[l.bin]||{z,lines:[]}).lines.push(l); }); }
   P.mats={}; for(const z in P.chunks) P.chunks[z].forEach(l=>{ if(!P.mats[l.m]) P.mats[l.m]={d:l.d,u:l.u}; });
-  renderZonePick();
+  startRoute();
 }
-function zoneStats(z){ const P=S.pda; const lines=P.chunks[z]||[]; const pr=P.progAll[z]||{}; const sc=pr.sc||{}; const n=lines.length; const done=lines.filter(l=>sc[lineKey(l)]).length; return {n,done,plus:Object.keys(pr.ex||{}).length}; }
-function renderZonePick(){
-  const P=S.pda, p=$('#page'); const zones=myZones(P.job); const asg=P.job.assign||{};
-  p.innerHTML=`<div class="row"><h2 class="grow">${esc(P.job.name)}</h2><button class="ghost" id="back">◀ Joburi</button></div><div class="muted small" style="margin-bottom:8px">${isSup()?'Alege zona pe care numeri. Poți scana și o etichetă de locație.':'Zonele alocate ție. Poți scana și o etichetă de locație din ele.'}</div>
-  <input class="scanin" id="zscan" placeholder="Scanează locația sau alege zona" autocomplete="off">
-  <div style="margin-top:10px">${zones.map(z=>{const s=zoneStats(z.z); const pct=s.n?Math.round(100*s.done/s.n):0; const lb=z.label||zoneLabel(z.z); return `<div class="card" style="cursor:pointer;padding:10px 12px" data-z="${esc(z.z)}"><div class="row"><b class="mono" style="font-size:18px;width:100px">${esc(lb)}</b><div class="grow"><div class="small muted">${z.n} paleți · ${z.bins} locații${s.plus?' · +'+s.plus+' în plus':''}${asg[z.z]?' · '+esc(asg[z.z].name):''}</div><div class="bar"><i style="width:${pct}%"></i></div></div><span class="pill ${pct===100?'ok':'grey'}">${s.done}/${s.n}</span></div></div>`;}).join('')||'<div class="card muted">Nu ai zone alocate în acest job.</div>'}</div>`;
-  $('#back').onclick=()=>{ P.job=null; renderPdaHome(); };
-  p.querySelectorAll('[data-z]').forEach(c=>c.onclick=()=>startZone(c.dataset.z));
-  const zi=$('#zscan'); zi.focus(); zi.onkeydown=e=>{ if(e.key==='Enter'){ const v=zi.value.trim().toUpperCase(); zi.value=''; const b=P.binIndex[v]; if(!b){ if(looksLikeBin(v)){ const z=zoneOf(v); const zz=zones.find(x=>x.z===z)||(zones.length===1?zones[0]:null); if(zz){ startZone(zz.z); addNewBin(v); } else toast('Locația '+v+' nu e în job și zona ei ('+zoneLabel(z)+') nu îți e alocată.'); } else toast('Cod nerecunoscut: '+v); } else if(!zones.some(z=>z.z===b.z)) toast('Locația '+v+' e în zona '+zlabel(P.job,b.z)+', care nu îți e alocată.'); else startZone(b.z,v); } };
-}
-function startZone(z,bin){
-  const P=S.pda; stopPda(); P.zone=z; P.prog=P.progAll[z]||{}; P.binConfirmed=false; P.lastAction=null;
-  const lines=P.chunks[z]; P.bins=[...new Set([...lines.map(l=>l.bin),...Object.keys(P.prog.nb||{})])].sort(cmpBin); if(P.reverse) P.bins.reverse();
-  P.binIdx=0; if(bin){ P.binIdx=Math.max(0,P.bins.indexOf(bin)); P.binConfirmed=true; } else { const i=P.bins.findIndex(b=>!binDone(b)); if(i>=0) P.binIdx=i; }
-  P.unsub=Store.listenProgress(P.job.id,z,(zz,d)=>{ P.prog=d||{}; P.progAll[z]=P.prog; let added=false; Object.keys(P.prog.nb||{}).forEach(b=>{ if(!P.bins.includes(b)){ P.bins.push(b); added=true; } }); if(added){ const cur=curBin(); P.bins.sort(cmpBin); if(P.reverse) P.bins.reverse(); P.binIdx=Math.max(0,P.bins.indexOf(cur)); } if(S.tab==='pda'&&P.zone===z) renderPdaCount(); });
+const zp=z=>S.pda.progAll[z]||{};
+function zoneStats(z){ const P=S.pda; const lines=P.chunks[z]||[]; const pr=zp(z); const sc=pr.sc||{}; const n=lines.length; const done=lines.filter(l=>findRec(lineKey(l))).length; return {n,done,plus:Object.keys(pr.ex||{}).length}; }
+function myStats(){ const P=S.pda; let n=0,done=0; P.zones.forEach(z=>{ const s=zoneStats(z); n+=s.n; done+=s.done; }); return {n,done}; }
+function buildBins(){ const P=S.pda; const cur=P.bins?curBin():null; const out=[]; P.zones.forEach(z=>{ const set=new Set((P.chunks[z]||[]).map(l=>l.bin)); Object.keys(zp(z).nb||{}).forEach(b=>{ set.add(b); if(!P.binIndex[b]) P.binIndex[b]={z,lines:[],nb:true}; }); out.push(...[...set].sort(cmpBin)); }); if(P.reverse) out.reverse(); P.bins=out; if(cur){ const i=P.bins.indexOf(cur); if(i>=0) P.binIdx=i; } if(P.binIdx>=P.bins.length) P.binIdx=Math.max(0,P.bins.length-1); }
+function startRoute(bin){
+  const P=S.pda; stopPda(); P.route=true; P.bins=null; P.binIdx=0; buildBins();
+  if(bin&&P.bins.includes(bin)){ P.binIdx=P.bins.indexOf(bin); P.binConfirmed=true; } else { const i=P.bins.findIndex(b=>!binDone(b)&&!binClosed(b)); if(i>=0) P.binIdx=i; }
+  P.unsubs=P.zones.map(z=>Store.listenProgress(P.job.id,z,(zz,d)=>{ P.progAll[z]=d||{}; buildBins(); if(S.tab==='pda'&&P.route&&P.job) renderPdaCount(); }));
   renderPdaCount();
 }
-// înregistrări scanate pentru o cheie, din zona proprie (live) sau din snapshot-ul celorlalte zone
-function findRec(key){ const P=S.pda; if(P.prog.sc?.[key]) return {rec:P.prog.sc[key],z:P.zone}; for(const z in P.progAll){ if(z===P.zone) continue; const r=P.progAll[z]?.sc?.[key]; if(r) return {rec:r,z}; } return null; }
+// înregistrarea scanată pentru o cheie (SU sau L<i>), din oricare zonă a jobului
+function findRec(key){ const P=S.pda; for(const z in P.progAll){ const r=P.progAll[z]?.sc?.[key]; if(r) return {rec:r,z}; } return null; }
 function binLines(bin){ return (S.pda.binIndex[bin]?.lines)||[]; }
-const looksLikeBin=c=>/^[A-Z][A-Z0-9]{0,5}(-\d{1,3}){0,3}$/.test(c);
-// adaugă o locație care nu există în job (ex. raft nou / locație lipsă din export) în zona curentă
-async function addNewBin(bin){ const P=S.pda; if(!await confirmDlg('Locația '+bin+' nu e în inventar','O adaugi ca locație nouă în zona '+zlabel(P.job,P.zone)+'? Paleții scanați aici vor apărea ca „în plus" pe această locație.','Da, adaugă locația')) return false;
-  await Store.mergeProgress(P.job.id,P.zone,{nb:{[bin]:{u:S.user.name,t:now()}}}); if(!P.binIndex[bin]) P.binIndex[bin]={z:P.zone,lines:[],nb:true}; if(!P.bins.includes(bin)){ P.bins.push(bin); P.bins.sort(cmpBin); if(P.reverse) P.bins.reverse(); } P.binIdx=P.bins.indexOf(bin); P.binConfirmed=true; beep('ok'); banner('info','Locație nouă: '+bin,'Scanează paleții găsiți aici'); renderPdaCount(); return true; }
-function binDone(bin){ return binLines(bin).every(l=>findRec(lineKey(l))) ; }
-function binClosed(bin){ const P=S.pda; return !!(P.prog.cl?.[bin]); }
+function binZone(bin){ return S.pda.binIndex[bin]?.z; }
 function curBin(){ return S.pda.bins[S.pda.binIdx]; }
+function curZone(){ return binZone(curBin())||S.pda.zones[0]; }
+const looksLikeBin=c=>/^[A-Z][A-Z0-9]{0,5}(-\d{1,3}){0,3}$/.test(c);
+// adaugă o locație care nu există în job (raft nou / locație lipsă din export)
+async function addNewBin(bin){ const P=S.pda; const z0=zoneOf(bin); const z=P.zones.includes(z0)?z0:curZone();
+  if(!await confirmDlg('Locația '+bin+' nu e în inventar','O adaugi ca locație nouă (zona '+zlabel(P.job,z)+')? Paleții scanați aici vor apărea ca „în plus" pe această locație.','Da, adaugă locația')) return false;
+  await Store.mergeProgress(P.job.id,z,{nb:{[bin]:{u:S.user.name,t:now()}}}); if(!P.binIndex[bin]) P.binIndex[bin]={z,lines:[],nb:true}; P.progAll[z]=P.progAll[z]||{}; P.progAll[z].nb=P.progAll[z].nb||{}; P.progAll[z].nb[bin]=P.progAll[z].nb[bin]||{u:S.user.name,t:now()}; buildBins(); P.binIdx=P.bins.indexOf(bin); P.binConfirmed=true; beep('ok'); banner('info','Locație nouă: '+bin,'Scanează paleții găsiți aici'); renderPdaCount(); return true; }
+function binDone(bin){ return binLines(bin).every(l=>findRec(lineKey(l))); }
+function binClosed(bin){ return !!(zp(binZone(bin)).cl?.[bin]); }
 function renderPdaCount(){
-  const P=S.pda, p=$('#page'); const bin=curBin(); const lines=binLines(bin); const bulk=isBulkZone(P.zone);
-  const zs=zoneStats(P.zone); const closed=binClosed(bin); const allDone=lines.length&&lines.every(l=>findRec(lineKey(l)));
-  const extrasHere=Object.entries(P.prog.ex||{}).filter(([id,e])=>e.bin===bin);
-  const foreignHere=Object.entries(P.prog.sc||{}).filter(([k,r])=>r.bin===bin&&r.home&&r.home!==bin);
+  const P=S.pda, p=$('#page'); const bin=curBin(); if(!bin){ p.innerHTML='<div class="card muted">Nu există locații în zonele tale.</div>'; return; } const zone=curZone(); const pr=zp(zone); const lines=binLines(bin); const bulk=isBulkZone(zone);
+  const ms=myStats(); const closed=binClosed(bin); const allDone=lines.length&&lines.every(l=>findRec(lineKey(l)));
+  const extrasHere=Object.entries(pr.ex||{}).filter(([id,e])=>e.bin===bin);
+  const foreignHere=Object.entries(pr.sc||{}).filter(([k,r])=>r.bin===bin&&r.home&&r.home!==bin);
+  const isNew=!!(pr.nb||{})[bin];
   p.innerHTML=`<div class="pda">
-  <div class="row small" style="margin-bottom:6px"><button class="ghost" id="back">◀ Zone</button><b>${esc(P.job.name)}</b><span class="right muted">Zona <b class="mono">${esc(zlabel(P.job,P.zone))}</b> · ${zs.done}/${zs.n}</span></div>
-  <div class="binbox"><button id="prev" ${P.bins.length<2?'disabled':''}>◀</button><div class="grow"><div class="bin">${esc(bin)}</div><div class="st">${closed?'✕ locație închisă':allDone?'✓ completă':(P.binConfirmed?'locație confirmată':(P.strict?'scanează eticheta locației':'nescanată'))} · ${P.binIdx+1}/${P.bins.length}</div></div><button id="next" ${P.bins.length<2?'disabled':''}>▶</button></div>
+  <div class="row small" style="margin-bottom:6px"><button class="ghost" id="back">◀ Inventare</button><b>${esc(P.job.name)}</b><span class="right muted">${ms.done}/${ms.n} paleți</span></div>
+  <div class="binbox"><button id="prev" ${P.bins.length<2?'disabled':''}>◀</button><div class="grow"><div class="bin">${esc(bin)}</div><div class="st">${closed?'✕ locație închisă':allDone?'✓ completă':(P.binConfirmed?'locație confirmată':(P.strict?'scanează eticheta locației':'nescanată'))} · ${P.binIdx+1}/${P.bins.length} · ${esc(zlabel(P.job,zone))}</div></div><button id="next" ${P.bins.length<2?'disabled':''}>▶</button></div>
   <input class="scanin" id="scan" placeholder="${P.strict&&!P.binConfirmed?'Scanează eticheta locației…':'Scanează eticheta paletului…'}" autocomplete="off" style="margin-top:8px">
   <div class="row" style="margin-top:8px"><button class="sec grow" id="list">Lista locații</button><button class="sec grow" id="manual">Tastează cod</button>${P.lastAction?'<button class="sec" id="undo">↶ Anulează</button>':''}</div>
   <div id="lines" style="margin-top:6px">
-   ${P.binIndex[bin]?.nb||(P.prog.nb||{})[bin]?'<div class="card small" style="background:var(--infobg);color:var(--info)">Locație nouă, adăugată la numărare (nu era în export). Scanează paleții găsiți aici.</div>':''}${lines.length?lines.map(l=>{ const f=findRec(lineKey(l)); const st=lineStatus(l,f?.rec,closed); return `<div class="line ${st}"><div class="row"><div class="grow"><div class="mat">${esc(l.m)}</div><div class="desc">${esc(l.d)}${l.b&&l.b!=='SABIT'?' · lot '+esc(l.b):''}</div><div class="su">${l.su?esc(l.su):'fără SU'}${f?' · '+(f.rec.bin!==l.bin?'găsit în '+esc(f.rec.bin)+' · ':'')+esc(f.rec.u||'')+' '+fmtT(f.rec.t):''}</div></div><div style="text-align:right"><div class="qty">${f?esc(f.rec.q)+(f.rec.q!==l.q?' <span class="small muted">/ '+esc(l.q)+'</span>':''):esc(l.q)} <span class="small">${esc(l.u)}</span></div><span class="pill ${STATUS_KIND[st]}">${STATUS_RO[st]}</span></div></div><div class="row" style="margin-top:6px"><button class="ghost" data-qty="${esc(lineKey(l))}">${f?'Corectează cantitatea':'Confirmă manual / altă cantitate'}</button></div></div>`;}).join(''):'<div class="card muted">Nicio linie scriptică în această locație'+(extrasHere.length?' — doar paleți adăugați.':'. Scanează paletul găsit aici.')+'</div>'}
+   ${isNew?'<div class="card small" style="background:var(--infobg);color:var(--info)">Locație nouă, adăugată la numărare (nu era în export). Scanează paleții găsiți aici.</div>':''}${lines.length?lines.map(l=>{ const f=findRec(lineKey(l)); const st=lineStatus(l,f?.rec,closed); return `<div class="line ${st}"><div class="row"><div class="grow"><div class="mat">${esc(l.m)}</div><div class="desc">${esc(l.d)}${l.b&&l.b!=='SABIT'?' · lot '+esc(l.b):''}</div><div class="su">${l.su?esc(l.su):'fără SU'}${f?' · '+(f.rec.bin!==l.bin?'găsit în '+esc(f.rec.bin)+' · ':'')+esc(f.rec.u||'')+' '+fmtT(f.rec.t):''}</div></div><div style="text-align:right"><div class="qty">${f?esc(f.rec.q)+(f.rec.q!==l.q?' <span class="small muted">/ '+esc(l.q)+'</span>':''):esc(l.q)} <span class="small">${esc(l.u)}</span></div><span class="pill ${STATUS_KIND[st]}">${STATUS_RO[st]}</span></div></div><div class="row" style="margin-top:6px"><button class="ghost" data-qty="${esc(lineKey(l))}">${f?'Corectează cantitatea':'Confirmă manual / altă cantitate'}</button></div></div>`;}).join(''):'<div class="card muted">Nicio linie scriptică în această locație'+(extrasHere.length?' — doar paleți adăugați.':'. Scanează paletul găsit aici.')+'</div>'}
    ${foreignHere.map(([k,r])=>`<div class="line LOC"><div class="row"><div class="grow"><div class="mat">${esc(r.m||'')}</div><div class="desc">${esc(r.d||'')}</div><div class="su">${esc(k)} · scriptic în ${esc(r.home)}</div></div><div style="text-align:right"><div class="qty">${esc(r.q)}</div><span class="pill info">Altă locație</span></div></div></div>`).join('')}
    ${extrasHere.map(([id,e])=>`<div class="line PLUS"><div class="row"><div class="grow"><div class="mat">${esc(e.m)}</div><div class="desc">${esc(e.d||'')}${e.b?' · lot '+esc(e.b):''}</div><div class="su">${esc(e.su||'fără SU')} · ${esc(e.u||'')} ${fmtT(e.t)}</div></div><div style="text-align:right"><div class="qty">${esc(e.q)}</div><span class="pill info">În plus</span></div></div><div class="row" style="margin-top:6px"><button class="ghost" data-delex="${id}">Șterge</button></div></div>`).join('')}
   </div>
   <div class="row" style="margin-top:10px">${closed?`<button class="sec grow" id="reopen">Redeschide locația</button>`:`${!allDone&&lines.length?`<button class="warn grow" id="close">Termină locația (${lines.filter(l=>!findRec(lineKey(l))).length} lipsă)</button>`:''}${lines.length&&!lines.some(l=>findRec(lineKey(l)))&&!bulk?`<button class="sec grow" id="empty">Locație goală</button>`:''}`}</div>
-  <div class="row" style="margin-top:14px"><button class="ghost" id="rev">${P.reverse?'Sens: descrescător':'Sens: crescător'}</button><button class="ghost right" id="zonedone">Zonă terminată…</button></div>
-  <div class="small muted" style="margin-top:6px">Mod ${P.strict?'strict (locația se confirmă prin scanare)':'liber'} · scanarea = confirmare cantitate</div></div>`;
-  $('#back').onclick=()=>{ stopPda(); P.zone=null; renderZonePick(); };
+  <div class="row" style="margin-top:14px"><button class="ghost" id="rev">${P.reverse?'Sens: descrescător':'Sens: crescător'}</button><button class="ghost right" id="zonedone">Zona ${esc(zlabel(P.job,zone))} terminată…</button></div>
+  <div class="small muted" style="margin-top:6px">Zonele tale: ${esc(zonesCompact(P.zones))} · mod ${P.strict?'strict (locația se confirmă prin scanare)':'liber'} · scanarea = confirmare cantitate</div></div>`;
+  $('#back').onclick=()=>{ stopPda(); P.job=null; renderPdaHome(); };
   $('#prev').onclick=()=>gotoBin(P.binIdx-1); $('#next').onclick=()=>gotoBin(P.binIdx+1);
   $('#list').onclick=renderBinList; $('#manual').onclick=()=>{ const m=modal(`<h2>Introdu codul</h2><input id="mc" placeholder="SU (14 cifre) sau locație" autocomplete="off"><button class="big" id="mok" style="margin-top:10px">OK</button>`); $('#mc',m).focus(); const go=()=>{const v=$('#mc',m).value.trim(); m.remove(); if(v) handleScan(v);}; $('#mok',m).onclick=go; $('#mc',m).onkeydown=e=>{if(e.key==='Enter')go();}; };
   const u=$('#undo'); if(u) u.onclick=undoLast;
   p.querySelectorAll('[data-qty]').forEach(b=>b.onclick=()=>qtyDialog(b.dataset.qty));
-  p.querySelectorAll('[data-delex]').forEach(b=>b.onclick=async()=>{ if(await confirmDlg('Șterge paletul adăugat?','Se șterge înregistrarea "în plus" din această locație.','Șterge','err')){ await Store.deleteProgressField(P.job.id,P.zone,['ex',b.dataset.delex]); } });
-  const c=$('#close'); if(c) c.onclick=async()=>{ if(await confirmDlg('Termină locația '+bin+'?','Paleții nescanați de aici vor fi marcați LIPSĂ.','Termină','warn')){ await Store.mergeProgress(P.job.id,P.zone,{cl:{[bin]:{u:S.user.name,t:now()}}}); beep('warn'); gotoNextOpen(); } };
-  const e=$('#empty'); if(e) e.onclick=async()=>{ if(await confirmDlg('Locația '+bin+' este goală?','Toți paleții scriptici de aici vor fi marcați LIPSĂ.','Da, e goală','warn')){ await Store.mergeProgress(P.job.id,P.zone,{cl:{[bin]:{u:S.user.name,t:now(),e:true}}}); beep('warn'); gotoNextOpen(); } };
-  const r=$('#reopen'); if(r) r.onclick=async()=>{ await Store.deleteProgressField(P.job.id,P.zone,['cl',bin]); };
-  $('#rev').onclick=()=>{ P.reverse=!P.reverse; P.bins.reverse(); P.binIdx=P.bins.length-1-P.binIdx; renderPdaCount(); };
-  $('#zonedone').onclick=async()=>{ const open=P.bins.filter(b=>!binDone(b)&&!binClosed(b)); if(!open.length){ toast('Toate locațiile din zonă sunt complete.'); return; } const miss=open.reduce((a,b)=>a+binLines(b).filter(l=>!findRec(lineKey(l))).length,0); if(await confirmDlg('Închizi zona '+zlabel(P.job,P.zone)+'?',open.length+' locații incomplete, '+miss+' paleți vor fi marcați LIPSĂ.','Închide zona','warn')){ const cl={}; open.forEach(b=>cl[b]={u:S.user.name,t:now(),zone:true}); await Store.mergeProgress(P.job.id,P.zone,{cl}); toast('Zona închisă'); } };
+  p.querySelectorAll('[data-delex]').forEach(b=>b.onclick=async()=>{ if(await confirmDlg('Șterge paletul adăugat?','Se șterge înregistrarea "în plus" din această locație.','Șterge','err')){ await Store.deleteProgressField(P.job.id,zone,['ex',b.dataset.delex]); } });
+  const c=$('#close'); if(c) c.onclick=async()=>{ if(await confirmDlg('Termină locația '+bin+'?','Paleții nescanați de aici vor fi marcați LIPSĂ.','Termină','warn')){ await Store.mergeProgress(P.job.id,zone,{cl:{[bin]:{u:S.user.name,t:now()}}}); beep('warn'); gotoNextOpen(); } };
+  const e=$('#empty'); if(e) e.onclick=async()=>{ if(await confirmDlg('Locația '+bin+' este goală?','Toți paleții scriptici de aici vor fi marcați LIPSĂ.','Da, e goală','warn')){ await Store.mergeProgress(P.job.id,zone,{cl:{[bin]:{u:S.user.name,t:now(),e:true}}}); beep('warn'); gotoNextOpen(); } };
+  const r=$('#reopen'); if(r) r.onclick=async()=>{ await Store.deleteProgressField(P.job.id,zone,['cl',bin]); };
+  $('#rev').onclick=()=>{ P.reverse=!P.reverse; buildBins(); renderPdaCount(); };
+  $('#zonedone').onclick=async()=>{ const open=P.bins.filter(b=>binZone(b)===zone&&!binDone(b)&&!binClosed(b)); if(!open.length){ toast('Toate locațiile din zonă sunt complete.'); return; } const miss=open.reduce((a,b)=>a+binLines(b).filter(l=>!findRec(lineKey(l))).length,0); if(await confirmDlg('Închizi zona '+zlabel(P.job,zone)+'?',open.length+' locații incomplete, '+miss+' paleți vor fi marcați LIPSĂ.','Închide zona','warn')){ const cl={}; open.forEach(b=>cl[b]={u:S.user.name,t:now(),zone:true}); await Store.mergeProgress(P.job.id,zone,{cl}); toast('Zona închisă'); } };
   const si=$('#scan'); si.focus(); si.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); const v=si.value.trim(); si.value=''; if(v) handleScan(v); } };
   si.onblur=()=>setTimeout(()=>{ if(!document.querySelector('.modal') && S.tab==='pda' && document.activeElement===document.body) si.focus(); },150);
 }
 function gotoBin(i){ const P=S.pda; if(i<0||i>=P.bins.length){ toast(i<0?'Ești la prima locație':'Ești la ultima locație'); return; } P.binIdx=i; P.binConfirmed=!P.strict; renderPdaCount(); }
 function gotoNextOpen(){ const P=S.pda; const i=P.bins.findIndex((b,k)=>k>P.binIdx&&!binDone(b)&&!binClosed(b)); if(i>=0){ P.binIdx=i; P.binConfirmed=!P.strict; } renderPdaCount(); }
 function renderBinList(){
-  const P=S.pda; const m=modal(`<h2>Locații — zona ${esc(zlabel(P.job,P.zone))}</h2><input id="bf" placeholder="Caută locație" autocomplete="off"><div class="binlist" id="bl" style="margin-top:8px"></div>`);
-  const draw=()=>{ const f=$('#bf',m).value.trim().toUpperCase(); $('#bl',m).innerHTML=P.bins.filter(b=>!f||b.includes(f)).map((b,i)=>{ const ls=binLines(b); const d=ls.filter(l=>findRec(lineKey(l))).length; const isNew=!!(P.prog.nb||{})[b]; const cls=binClosed(b)?'closed':(ls.length&&d===ls.length?'done':''); return `<div class="b ${cls} ${b===curBin()?'cur':''}" data-b="${esc(b)}"><span class="n">${esc(b)}</span><span class="muted small grow">${isNew?'locație nouă':ls.map(l=>l.m).slice(0,2).join(', ')}${ls.length>2?'…':''}</span><span class="pill ${cls==='done'?'ok':cls==='closed'?'err':'grey'}">${d}/${ls.length}</span></div>`;}).join('');
+  const P=S.pda; const m=modal(`<h2>Locații — ${esc(zonesCompact(P.zones))}</h2><input id="bf" placeholder="Caută locație" autocomplete="off"><div class="binlist" id="bl" style="margin-top:8px"></div>`);
+  const draw=()=>{ const f=$('#bf',m).value.trim().toUpperCase(); let lastZ=null; $('#bl',m).innerHTML=P.bins.filter(b=>!f||b.includes(f)).map((b,i)=>{ const ls=binLines(b); const d=ls.filter(l=>findRec(lineKey(l))).length; const z=binZone(b); const isNew=!!(zp(z).nb||{})[b]; const cls=binClosed(b)?'closed':(ls.length&&d===ls.length?'done':''); const hdr=z!==lastZ?`<div class="small muted" style="margin:10px 0 2px"><b>${esc(zlabel(P.job,z))}</b></div>`:''; lastZ=z; return hdr+`<div class="b ${cls} ${b===curBin()?'cur':''}" data-b="${esc(b)}"><span class="n">${esc(b)}</span><span class="muted small grow">${isNew?'locație nouă':ls.map(l=>l.m).slice(0,2).join(', ')}${ls.length>2?'…':''}</span><span class="pill ${cls==='done'?'ok':cls==='closed'?'err':'grey'}">${d}/${ls.length}</span></div>`;}).join('');
     m.querySelectorAll('[data-b]').forEach(el=>el.onclick=()=>{ P.binIdx=P.bins.indexOf(el.dataset.b); P.binConfirmed=!P.strict; m.remove(); renderPdaCount(); }); };
   $('#bf',m).oninput=draw; draw();
 }
 function qtyDialog(key){
-  const P=S.pda; const bin=curBin(); const l=binLines(bin).find(x=>lineKey(x)===key); if(!l) return; const f=findRec(key);
+  const P=S.pda; const bin=curBin(); const zone=curZone(); const l=binLines(bin).find(x=>lineKey(x)===key); if(!l) return; const f=findRec(key);
   const m=modal(`<h2>${esc(l.m)}</h2><div class="muted small">${esc(l.d)} · ${esc(bin)} · scriptic <b>${esc(l.q)} ${esc(l.u)}</b></div><label>Cantitate numărată fizic</label><input id="q" inputmode="numeric" value="${f?esc(f.rec.q):esc(l.q)}" style="font-size:24px;text-align:center">
    <div class="numpad">${[1,2,3,4,5,6,7,8,9,'C',0,'⌫'].map(k=>`<button data-k="${k}">${k}</button>`).join('')}</div>
    <div class="row" style="margin-top:10px"><button class="ok big" id="qok">Salvează</button></div>`);
   const qi=$('#q',m); qi.focus(); qi.select();
   m.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{ const k=b.dataset.k; if(k==='C') qi.value=''; else if(k==='⌫') qi.value=qi.value.slice(0,-1); else qi.value+=k; });
-  const save=async()=>{ const q=Number(qi.value); if(!(q>=0)){toast('Cantitate invalidă');return;} m.remove(); await Store.mergeProgress(P.job.id,P.zone,{sc:{[key]:{q,bin,u:S.user.name,t:now(),m:l.m,d:l.d,home:l.bin,man:true}}}); P.lastAction={type:'sc',key}; beep(q===l.q?'ok':'warn'); banner(q===l.q?'ok':'warn',q===l.q?'Confirmat '+l.m:'Cantitate diferită: '+q+' / '+l.q, l.m); };
+  const save=async()=>{ const q=Number(qi.value); if(!(q>=0)){toast('Cantitate invalidă');return;} m.remove(); const z=f?f.z:zone; await Store.mergeProgress(P.job.id,z,{sc:{[key]:{q,bin:f?f.rec.bin:bin,u:S.user.name,t:now(),m:l.m,d:l.d,home:l.bin,man:true}}}); P.lastAction={type:'sc',key,z}; beep(q===l.q?'ok':'warn'); banner(q===l.q?'ok':'warn',q===l.q?'Confirmat '+l.m:'Cantitate diferită: '+q+' / '+l.q, l.m); };
   $('#qok',m).onclick=save; qi.onkeydown=e=>{if(e.key==='Enter')save();};
 }
-async function undoLast(){ const P=S.pda; const a=P.lastAction; if(!a) return; if(await confirmDlg('Anulezi ultima scanare?','','Anulează','warn')){ await Store.deleteProgressField(P.job.id,a.z||P.zone,[a.type,a.key]); P.lastAction=null; toast('Anulat'); } }
+async function undoLast(){ const P=S.pda; const a=P.lastAction; if(!a) return; if(await confirmDlg('Anulezi ultima scanare?','','Anulează','warn')){ await Store.deleteProgressField(P.job.id,a.z||curZone(),[a.type,a.key]); P.lastAction=null; toast('Anulat'); } }
 async function handleScan(raw){
   const P=S.pda; const code=raw.trim(); const up=code.toUpperCase();
   // 1) etichetă de locație?
-  if(P.binIndex[up]){ const b=P.binIndex[up]; if(b.z!==P.zone){ if(!myZones(P.job).some(z=>z.z===b.z)){ beep('err'); banner('err','Locația '+up+' e în zona '+zlabel(P.job,b.z),'Zona nu îți este alocată'); return; } if(await confirmDlg('Locația '+up+' e în zona '+zlabel(P.job,b.z),'Treci pe zona '+zlabel(P.job,b.z)+'?','Da, schimbă zona')){ startZone(b.z,up); } return; } P.binIdx=P.bins.indexOf(up); P.binConfirmed=true; beep('ok'); renderPdaCount(); return; }
+  if(P.binIndex[up]){ const b=P.binIndex[up]; if(!P.zones.includes(b.z)){ beep('err'); banner('err','Locația '+up+' e în zona '+zlabel(P.job,b.z),'Zona nu îți este alocată'); return; } P.binIdx=P.bins.indexOf(up); P.binConfirmed=true; beep('ok'); renderPdaCount(); return; }
   // 2) număr de Storage Unit (14 cifre) — din codul 1D sau din QR
   const mm=code.match(/\d{14}/); const su=mm?mm[0]:null;
-  if(!su){ if(looksLikeBin(up)){ const z=zoneOf(up); if(z!==P.zone && myZones(P.job).some(x=>x.z===z)){ if(await confirmDlg('Locația '+up+' ar fi în zona '+zlabel(P.job,z),'Treci pe zona '+zlabel(P.job,z)+' și o adaugi acolo?','Da')){ startZone(z); await addNewBin(up); } return; } beep('warn'); await addNewBin(up); return; } beep('err'); banner('err','Cod nerecunoscut',code.slice(0,40)); return; }
+  if(!su){ if(looksLikeBin(up)){ const z=zoneOf(up); if(!P.zones.includes(z)&&P.job.zones.some(x=>x.z===z)){ beep('err'); banner('err','Locația '+up+' ar fi în zona '+zlabel(P.job,z),'Zona nu îți este alocată'); return; } beep('warn'); await addNewBin(up); return; } beep('err'); banner('err','Cod nerecunoscut',code.slice(0,40)); return; }
   if(P.strict&&!P.binConfirmed){ beep('err'); banner('err','Scanează mai întâi eticheta locației','Locația curentă: '+curBin()); return; }
-  const bin=curBin(); const hit=P.suIndex[su]; const prev=findRec(su);
+  const bin=curBin(); const zone=curZone(); const hit=P.suIndex[su]; const prev=findRec(su);
   if(prev){ beep('err'); banner('err','Palet deja scanat','în '+prev.rec.bin+' de '+(prev.rec.u||'?')+' la '+fmtT(prev.rec.t)); return; }
   if(hit){ const l=hit.l;
-    if(l.bin===bin){ await Store.mergeProgress(P.job.id,P.zone,{sc:{[su]:{q:l.q,bin,u:S.user.name,t:now(),m:l.m,d:l.d,home:l.bin}}}); P.lastAction={type:'sc',key:su}; beep('ok'); banner('ok','✓ '+l.m+' · '+l.q+' '+l.u, l.d); if(binLines(bin).every(x=>x.su===su||findRec(lineKey(x)))) setTimeout(gotoNextOpen,900); return; }
+    if(l.bin===bin){ await Store.mergeProgress(P.job.id,zone,{sc:{[su]:{q:l.q,bin,u:S.user.name,t:now(),m:l.m,d:l.d,home:l.bin}}}); P.lastAction={type:'sc',key:su,z:zone}; beep('ok'); banner('ok','✓ '+l.m+' · '+l.q+' '+l.u, l.d); if(binLines(bin).every(x=>x.su===su||findRec(lineKey(x)))) setTimeout(gotoNextOpen,900); return; }
     // palet găsit în altă locație decât cea scriptică
-    await Store.mergeProgress(P.job.id,P.zone,{sc:{[su]:{q:l.q,bin,u:S.user.name,t:now(),m:l.m,d:l.d,home:l.bin}}}); P.lastAction={type:'sc',key:su}; beep('warn'); banner('warn','Altă locație: scriptic în '+l.bin,l.m+' · '+l.q+' '+l.u+' · înregistrat în '+bin); return; }
+    await Store.mergeProgress(P.job.id,zone,{sc:{[su]:{q:l.q,bin,u:S.user.name,t:now(),m:l.m,d:l.d,home:l.bin}}}); P.lastAction={type:'sc',key:su,z:zone}; beep('warn'); banner('warn','Altă locație: scriptic în '+l.bin,l.m+' · '+l.q+' '+l.u+' · înregistrat în '+bin); return; }
   // 3) SU necunoscut în acest job
-  beep('warn'); addExtraDialog(su,bin);
+  beep('warn'); addExtraDialog(su,bin,zone);
 }
-function addExtraDialog(su,bin){
+function addExtraDialog(su,bin,zone){
   const P=S.pda; const mats=Object.keys(P.mats).sort();
   const m=modal(`<h2>Palet necunoscut</h2><div class="muted small">SU <b class="mono">${esc(su)}</b> nu există în acest inventar. Îl adaugi în stoc, în locația <b>${esc(bin)}</b>?</div>
    <label>Număr articol</label><input id="em" list="matlist" autocomplete="off" placeholder="ex. M310KL150" style="text-transform:uppercase"><datalist id="matlist">${mats.map(x=>`<option value="${esc(x)}">`).join('')}</datalist><div id="ed" class="small muted" style="min-height:18px"></div>
@@ -425,12 +427,11 @@ function addExtraDialog(su,bin){
    <div class="row" style="margin-top:10px"><button class="sec grow" data-close2>Nu, renunț</button><button class="ok grow" id="es">Da, adaugă</button></div>`);
   $('[data-close2]',m).onclick=()=>m.remove();
   const em=$('#em',m); em.focus(); em.oninput=()=>{ const v=em.value.trim().toUpperCase(); $('#ed',m).textContent=P.mats[v]?P.mats[v].d:(v?'Articol nou (nu e în export)':''); };
-  $('#es',m).onclick=async()=>{ const mat=em.value.trim().toUpperCase(); const q=Number($('#eq',m).value); if(!mat||!(q>0)){$('#ee',m).textContent='Completează articolul și cantitatea.';return;} const id='X'+uid(); m.remove();
-    await Store.mergeProgress(P.job.id,P.zone,{ex:{[id]:{su,m:mat,d:P.mats[mat]?.d||'',b:$('#eb',m).value.trim(),q,bin,u:S.user.name,t:now(),uom:P.mats[mat]?.u||''}}}); P.lastAction={type:'ex',key:id}; beep('ok'); banner('info','Adăugat în plus: '+mat+' · '+q,bin); };
+  $('#es',m).onclick=async()=>{ const mat=em.value.trim().toUpperCase(); const q=Number($('#eq',m).value); if(!mat||!(q>0)){$('#ee',m).textContent='Completează articolul și cantitatea.';return;} const id='X'+uid(); const lot=$('#eb',m).value.trim(); m.remove();
+    await Store.mergeProgress(P.job.id,zone,{ex:{[id]:{su,m:mat,d:P.mats[mat]?.d||'',b:lot,q,bin,u:S.user.name,t:now(),uom:P.mats[mat]?.u||''}}}); P.lastAction={type:'ex',key:id,z:zone}; beep('ok'); banner('info','Adăugat în plus: '+mat+' · '+q,bin); };
 }
 // tastatură "wedge" (Zebra DataWedge) când nimic nu e focalizat
-let kbuf='',kT; document.addEventListener('keydown',e=>{ if(S.tab!=='pda'||!S.pda.zone) return; const ae=document.activeElement; if(ae&&ae!==document.body&&ae.tagName!=='BUTTON') return; if(e.key==='Enter'){ if(kbuf){const v=kbuf;kbuf='';handleScan(v);} return;} if(e.key.length===1){ kbuf+=e.key; clearTimeout(kT); kT=setTimeout(()=>kbuf='',800);} });
-
+let kbuf='',kT; document.addEventListener('keydown',e=>{ if(S.tab!=='pda'||!S.pda.route) return; const ae=document.activeElement; if(ae&&ae!==document.body&&ae.tagName!=='BUTTON') return; if(e.key==='Enter'){ if(kbuf){const v=kbuf;kbuf='';handleScan(v);} return;} if(e.key.length===1){ kbuf+=e.key; clearTimeout(kT); kT=setTimeout(()=>kbuf='',800);} });
 /* ============================ DASHBOARD + EXPORT ============================ */
 function stopDash(){ if(S.dash.unsub){S.dash.unsub();S.dash.unsub=null;} }
 const dayKey=t=>{ const d=new Date(t); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
@@ -447,14 +448,18 @@ function renderDashHome(){ const p=$('#page'); const D=S.dash;
 async function loadDash(){ stopDash(); const D=S.dash; $('#dbody').innerHTML='<div class="card">Se încarcă…</div>'; D.chunks=await Store.getChunks(D.job.id); D.users=(await Store.listUsers()).filter(u=>u.active!==false).sort((a,b)=>a.name.localeCompare(b.name)); D.prog={}; D.asgUser=D.asgUser||''; $('#dbody').innerHTML='<div id="asgbox"></div><div id="dstats"></div>'; D.unsub=Store.listenProgress(D.job.id,null,(z,d)=>{ D.prog[z]=d; if(S.tab==='dash'&&D.job) drawDash(); }); drawDash(); drawAssign(); }
 // alocarea zonelor pe numărători: alegi userul, bifezi zonele lui (inclusiv vrac/speciale), salvezi
 function drawAssign(){ const D=S.dash; const box=$('#asgbox'); if(!box||!isAdmin()) return; const asg=D.job.assign||{}; const u=(D.users||[]).find(x=>x.id===D.asgUser);
-  const group=(title,kind)=>{ const zs=D.job.zones.filter(z=>zoneKind(z.z)===kind); if(!zs.length) return ''; return `<div class="small muted" style="margin:8px 0 2px"><b>${title}</b> · <a href="#" data-gsel="${kind}:1">toate</a> · <a href="#" data-gsel="${kind}:0">niciuna</a></div><div class="row" style="gap:4px 12px">${zs.map(z=>{ const a=asg[z.z]; const mine=u&&a?.uid===u.id; const other=a&&!mine; return `<label class="chk" style="padding:4px 0;min-width:150px"><input type="checkbox" class="azone" data-kind="${kind}" value="${esc(z.z)}" ${mine?'checked':''} ${u?'':'disabled'}> <span class="mono">${esc(z.label||zoneLabel(z.z))}</span> <span class="small muted">${other?'→ '+esc(a.name):''}</span></label>`; }).join('')}</div>`; };
-  if(!D.asgOpen){ box.innerHTML=`<div class="card" style="padding:10px 14px"><div class="row"><b>Alocare zone pe numărători</b><span class="small muted">${Object.keys(asg).length} / ${D.job.zones.length} zone alocate</span><button class="sec right" id="asgopen" style="min-height:36px;padding:6px 12px">Alocă zone ▾</button></div></div>`; $('#asgopen').onclick=()=>{ D.asgOpen=true; drawAssign(); }; return; }
-  box.innerHTML=`<div class="card"><div class="row"><h3 class="grow">Alocare zone pe numărători</h3><button class="ghost" id="asgclose">Închide ▴</button></div><div class="small muted">Alege numărătorul, bifează zonele lui și salvează. O zonă bifată care era la alt numărător trece la cel ales. Pe PDA, numărătorii văd doar zonele alocate lor.</div>
-    <div class="row" style="margin-top:8px"><select id="asguser" style="width:auto;min-width:220px"><option value="">— alege numărătorul —</option>${(D.users||[]).map(x=>`<option value="${x.id}" ${x.id===D.asgUser?'selected':''}>${esc(x.name)} (${esc(x.role)})</option>`).join('')}</select><button id="asgsave" ${u?'':'disabled'}>Salvează alocarea</button><span class="small muted">${Object.keys(asg).length} / ${D.job.zones.length} zone alocate</span></div>
-    ${group('Parter (etaj 1)','P')}${group('Etaje (2+)','E')}${group('Vrac / speciale','S')}</div>`;
+  const free=D.job.zones.filter(z=>!asg[z.z]); const nAsg=D.job.zones.length-free.length;
+  if(!D.asgOpen){ box.innerHTML=`<div class="card" style="padding:10px 14px"><div class="row"><b>Alocare zone pe numărători</b><span class="small muted">${nAsg} / ${D.job.zones.length} zone alocate${free.length?' · '+free.length+' nealocate':''}</span><button class="sec right" id="asgopen" style="min-height:36px;padding:6px 12px">Alocă zone ▾</button></div></div>`; $('#asgopen').onclick=()=>{ D.asgOpen=true; drawAssign(); }; return; }
+  const group=(title,kind)=>{ const zs=free.filter(z=>zoneKind(z.z)===kind); if(!zs.length) return ''; return `<div class="small muted" style="margin:8px 0 2px"><b>${title}</b> · <a href="#" data-gsel="${kind}:1">toate</a> · <a href="#" data-gsel="${kind}:0">niciuna</a></div><div class="row" style="gap:4px 12px">${zs.map(z=>`<label class="chk" style="padding:4px 0;min-width:150px"><input type="checkbox" class="azone" data-kind="${kind}" value="${esc(z.z)}" ${u?'':'disabled'}> <span class="mono">${esc(z.label||zoneLabel(z.z))}</span></label>`).join('')}</div>`; };
+  const byUser={}; D.job.zones.forEach(z=>{ const a=asg[z.z]; if(a){ (byUser[a.uid]=byUser[a.uid]||{name:a.name,zs:[]}).zs.push(z.z); } });
+  box.innerHTML=`<div class="card"><div class="row"><h3 class="grow">Alocare zone pe numărători</h3><button class="ghost" id="asgclose">Închide ▴</button></div><div class="small muted">Alege numărătorul, bifează zonele (apar doar cele nealocate) și salvează. Numărătorul vede pe PDA un singur inventar cu toate zonele lui, în ordine.</div>
+    <div class="row" style="margin-top:8px"><select id="asguser" style="width:auto;min-width:220px"><option value="">— alege numărătorul —</option>${(D.users||[]).map(x=>`<option value="${x.id}" ${x.id===D.asgUser?'selected':''}>${esc(x.name)} (${esc(x.role)})</option>`).join('')}</select><button id="asgsave" ${u?'':'disabled'}>Salvează alocarea</button><span class="small muted">${nAsg} / ${D.job.zones.length} zone alocate</span></div>
+    ${free.length?group('Parter (etaj 1)','P')+group('Etaje (2+)','E')+group('Vrac / speciale','S'):'<div class="small muted" style="margin-top:8px">Toate zonele sunt alocate.</div>'}
+    ${Object.keys(byUser).length?`<div class="small muted" style="margin:12px 0 4px"><b>Alocate</b> — ✕ scoate zona de la numărător</div>${Object.keys(byUser).sort((a,b)=>byUser[a].name.localeCompare(byUser[b].name)).map(uid=>`<div class="row small" style="margin:3px 0"><b style="min-width:120px">${esc(byUser[uid].name)}</b>${byUser[uid].zs.sort(cmpZone).map(z=>`<span class="pill info">${esc(zlabel(D.job,z))} <a href="#" data-unz="${esc(z)}" style="color:inherit;text-decoration:none;margin-left:3px">✕</a></span>`).join(' ')}</div>`).join('')}`:''}</div>`;
   $('#asguser').onchange=e=>{ D.asgUser=e.target.value; drawAssign(); }; $('#asgclose').onclick=()=>{ D.asgOpen=false; drawAssign(); };
   box.querySelectorAll('[data-gsel]').forEach(a=>a.onclick=e=>{ e.preventDefault(); if(!u) return; const [k,v]=a.dataset.gsel.split(':'); box.querySelectorAll('.azone[data-kind="'+k+'"]').forEach(c=>c.checked=v==='1'); });
-  $('#asgsave').onclick=async()=>{ if(!u) return; const assign={...asg}; box.querySelectorAll('.azone').forEach(c=>{ if(c.checked) assign[c.value]={uid:u.id,name:u.name}; else if(assign[c.value]?.uid===u.id) delete assign[c.value]; }); $('#asgsave').disabled=true; await Store.updateJob(D.job.id,{assign}); D.job.assign=assign; toast('Alocare salvată pentru '+u.name); drawAssign(); drawDash(); }; }
+  box.querySelectorAll('[data-unz]').forEach(a=>a.onclick=async e=>{ e.preventDefault(); const assign={...asg}; delete assign[a.dataset.unz]; await Store.updateJob(D.job.id,{assign}); D.job.assign=assign; drawAssign(); drawDash(); });
+  $('#asgsave').onclick=async()=>{ if(!u) return; const assign={...asg}; let k=0; box.querySelectorAll('.azone:checked').forEach(c=>{ assign[c.value]={uid:u.id,name:u.name}; k++; }); if(!k){ toast('Bifează cel puțin o zonă.'); return; } $('#asgsave').disabled=true; await Store.updateJob(D.job.id,{assign}); D.job.assign=assign; toast(k+' zone alocate la '+u.name); drawAssign(); drawDash(); }; }
 // analiza completă a jobului: fiecare linie scriptică + extras, cu status
 function analyze(chunks,prog){ const scAll={}; for(const z in prog){ const sc=prog[z]?.sc||{}; for(const k in sc) scAll[k]={...sc[k],z}; } const clAll={}; for(const z in prog){ const cl=prog[z]?.cl||{}; for(const b in cl) clAll[b]=cl[b]; }
   const rows=[]; for(const z in chunks){ chunks[z].forEach(l=>{ const rec=scAll[lineKey(l)]; const st=lineStatus(l,rec,!!clAll[l.bin]); rows.push({z,l,rec,st,fiz:rec?Number(rec.q):(st==='LIPSA'?0:null),dif:rec?Number(rec.q)-Number(l.q):(st==='LIPSA'?-Number(l.q):null)}); }); }
@@ -463,12 +468,15 @@ function analyze(chunks,prog){ const scAll={}; for(const z in prog){ const sc=pr
 function drawDash(){ const D=S.dash; const {rows,extras}=analyze(D.chunks,D.prog); const cnt=s=>rows.filter(r=>r.st===s).length; const scanned=rows.filter(r=>r.rec).length; const pct=rows.length?Math.round(100*scanned/rows.length):0;
   const byZone={}; rows.forEach(r=>{ const o=byZone[r.z]=byZone[r.z]||{n:0,sc:0,ok:0,cant:0,loc:0,lipsa:0,plus:0}; o.n++; if(r.rec)o.sc++; if(r.st==='OK')o.ok++; if(r.st==='CANT')o.cant++; if(r.st==='LOC')o.loc++; if(r.st==='LIPSA')o.lipsa++; }); extras.forEach(x=>{ (byZone[x.z]=byZone[x.z]||{n:0,sc:0,ok:0,cant:0,loc:0,lipsa:0,plus:0}).plus++; });
   const byUser={}; rows.forEach(r=>{ if(r.rec?.u){ const o=byUser[r.rec.u]=byUser[r.rec.u]||{n:0,last:0}; o.n++; o.last=Math.max(o.last,r.rec.t||0);} }); extras.forEach(x=>{ if(x.e.u){ const o=byUser[x.e.u]=byUser[x.e.u]||{n:0,last:0}; o.n++; o.last=Math.max(o.last,x.e.t||0);} });
+  const asgD=D.job.assign||{}; const byOwner={}; D.job.zones.forEach(zz=>{ const z=zz.z; const a=asgD[z]; const k=a?a.uid:'~'; const o=byOwner[k]=byOwner[k]||{name:a?a.name:'— nealocate —',zs:[],n:0,sc:0,ok:0,cant:0,loc:0,lipsa:0,plus:0}; o.zs.push(z); const b=byZone[z]; if(b){ o.n+=b.n; o.sc+=b.sc; o.ok+=b.ok; o.cant+=b.cant; o.loc+=b.loc; o.lipsa+=b.lipsa; o.plus+=b.plus; } });
   const diffs=rows.filter(r=>['CANT','LOC','LIPSA'].includes(r.st)).length+extras.length;
   $('#dstats').innerHTML=`<div class="kpis"><div class="kpi"><b>${pct}%</b><span>progres · ${scanned}/${rows.length} paleți</span></div><div class="kpi"><b style="color:var(--ok)">${cnt('OK')}</b><span>OK</span></div><div class="kpi"><b style="color:var(--warn)">${cnt('CANT')}</b><span>cantitate diferită</span></div><div class="kpi"><b style="color:var(--info)">${cnt('LOC')}</b><span>altă locație</span></div><div class="kpi"><b style="color:var(--err)">${cnt('LIPSA')}</b><span>lipsă</span></div><div class="kpi"><b style="color:#7b3fbf">${extras.length}</b><span>în plus</span></div><div class="kpi"><b>${cnt('NENUMARAT')}</b><span>nenumărat</span></div></div>
   <div class="row" style="margin-bottom:10px"><button id="xls">⬇ Export Excel (scriptic vs fizic)</button>${isAdmin()&&diffs?`<button class="sec" id="recount">Job de reverificare (${diffs} diferențe)</button>`:''}</div>
-  <div class="card tablewrap"><h3>Pe zone</h3><table><thead><tr><th>Zonă</th><th>Alocat la</th><th>Paleți</th><th>Scanați</th><th>Progres</th><th>OK</th><th>Cant.</th><th>Altă loc.</th><th>Lipsă</th><th>În plus</th></tr></thead><tbody>${Object.keys(byZone).sort(cmpZone).map(z=>{const o=byZone[z];const p=o.n?Math.round(100*o.sc/o.n):0;const cur=(D.job.assign||{})[z]?.uid||'';return `<tr><td class="mono"><b>${esc(zlabel(D.job,z))}</b></td><td>${esc((D.job.assign||{})[z]?.name||'—')}</td><td>${o.n}</td><td>${o.sc}</td><td style="min-width:120px"><div class="bar"><i style="width:${p}%"></i></div><span class="small muted">${p}%</span></td><td>${o.ok}</td><td>${o.cant||''}</td><td>${o.loc||''}</td><td>${o.lipsa||''}</td><td>${o.plus||''}</td></tr>`;}).join('')}</tbody></table></div>
-  <div class="grid2"><div class="card tablewrap"><h3>Pe numărători</h3><table><thead><tr><th>Utilizator</th><th>Scanări</th><th>Ultima</th></tr></thead><tbody>${Object.keys(byUser).sort((a,b)=>byUser[b].n-byUser[a].n).map(u=>`<tr><td>${esc(u)}</td><td>${byUser[u].n}</td><td>${fmtT(byUser[u].last)}</td></tr>`).join('')||'<tr><td colspan="3" class="muted">Nicio scanare încă</td></tr>'}</tbody></table></div>
-  <div class="card tablewrap"><h3>Ultimele diferențe</h3><table><thead><tr><th>Status</th><th>Articol</th><th>Locație</th><th>Scriptic</th><th>Fizic</th><th>Cine</th></tr></thead><tbody>${[...rows.filter(r=>['CANT','LOC','LIPSA'].includes(r.st)).map(r=>({st:r.st,m:r.l.m,bin:r.l.bin+(r.rec&&r.rec.bin!==r.l.bin?' → '+r.rec.bin:''),s:r.l.q,f:r.fiz,u:r.rec?.u||'',t:r.rec?.t||0})),...extras.map(x=>({st:'PLUS',m:x.e.m,bin:x.e.bin,s:'',f:x.e.q,u:x.e.u,t:x.e.t}))].sort((a,b)=>b.t-a.t).slice(0,40).map(r=>`<tr><td><span class="pill ${STATUS_KIND[r.st]}">${STATUS_RO[r.st]}</span></td><td class="mono">${esc(r.m)}</td><td class="mono">${esc(r.bin)}</td><td>${esc(r.s)}</td><td>${esc(r.f)}</td><td class="small">${esc(r.u)}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">Nicio diferență</td></tr>'}</tbody></table></div></div>`;
+  <div class="card tablewrap"><h3>Pe numărători</h3><table><thead><tr><th>Numărător</th><th>Zone</th><th>Paleți</th><th>Scanați</th><th>Progres</th><th>OK</th><th>Cant.</th><th>Altă loc.</th><th>Lipsă</th><th>În plus</th><th>Ultima scanare</th></tr></thead><tbody>${Object.keys(byOwner).sort((a,b)=>a==='~'?1:b==='~'?-1:byOwner[a].name.localeCompare(byOwner[b].name)).map(k=>{const o=byOwner[k];const p=o.n?Math.round(100*o.sc/o.n):0;const bu=byUser[o.name]||{};return `<tr><td><b>${esc(o.name)}</b></td><td class="small">${esc(zonesCompact(o.zs))}</td><td>${o.n}</td><td>${o.sc}</td><td style="min-width:120px"><div class="bar"><i style="width:${p}%"></i></div><span class="small muted">${p}%</span></td><td>${o.ok}</td><td>${o.cant||''}</td><td>${o.loc||''}</td><td>${o.lipsa||''}</td><td>${o.plus||''}</td><td class="small">${fmtT(bu.last)||''}</td></tr>`;}).join('')}</tbody></table>
+   <div class="small" style="margin-top:8px"><a href="#" id="zdet">${D.zoneDetail?'Ascunde detaliul pe zone ▴':'Detaliu pe zone ▾'}</a></div>
+   ${D.zoneDetail?`<table style="margin-top:6px"><thead><tr><th>Zonă</th><th>Alocat la</th><th>Paleți</th><th>Scanați</th><th>Progres</th><th>OK</th><th>Cant.</th><th>Altă loc.</th><th>Lipsă</th><th>În plus</th></tr></thead><tbody>${Object.keys(byZone).sort(cmpZone).map(z=>{const o=byZone[z];const p=o.n?Math.round(100*o.sc/o.n):0;return `<tr><td class="mono"><b>${esc(zlabel(D.job,z))}</b></td><td>${esc((D.job.assign||{})[z]?.name||'—')}</td><td>${o.n}</td><td>${o.sc}</td><td style="min-width:120px"><div class="bar"><i style="width:${p}%"></i></div><span class="small muted">${p}%</span></td><td>${o.ok}</td><td>${o.cant||''}</td><td>${o.loc||''}</td><td>${o.lipsa||''}</td><td>${o.plus||''}</td></tr>`;}).join('')}</tbody></table>`:''}</div>
+  <div class="card tablewrap"><h3>Ultimele diferențe</h3><table><thead><tr><th>Status</th><th>Articol</th><th>Locație</th><th>Scriptic</th><th>Fizic</th><th>Cine</th></tr></thead><tbody>${[...rows.filter(r=>['CANT','LOC','LIPSA'].includes(r.st)).map(r=>({st:r.st,m:r.l.m,bin:r.l.bin+(r.rec&&r.rec.bin!==r.l.bin?' → '+r.rec.bin:''),s:r.l.q,f:r.fiz,u:r.rec?.u||'',t:r.rec?.t||0})),...extras.map(x=>({st:'PLUS',m:x.e.m,bin:x.e.bin,s:'',f:x.e.q,u:x.e.u,t:x.e.t}))].sort((a,b)=>b.t-a.t).slice(0,40).map(r=>`<tr><td><span class="pill ${STATUS_KIND[r.st]}">${STATUS_RO[r.st]}</span></td><td class="mono">${esc(r.m)}</td><td class="mono">${esc(r.bin)}</td><td>${esc(r.s)}</td><td>${esc(r.f)}</td><td class="small">${esc(r.u)}</td></tr>`).join('')||'<tr><td colspan="6" class="muted">Nicio diferență</td></tr>'}</tbody></table></div>`;
+  const zd=$('#zdet'); if(zd) zd.onclick=e=>{ e.preventDefault(); D.zoneDetail=!D.zoneDetail; drawDash(); };
   $('#xls').onclick=()=>exportExcel(D.job,D.chunks,D.prog); const rc=$('#recount'); if(rc) rc.onclick=()=>createRecount(D.job,D.chunks,D.prog);
 
 }
@@ -480,7 +488,7 @@ function exportExcel(job,chunks,prog){ const {rows,extras,clAll}=analyze(chunks,
   const all=[H,...rows.sort((a,b)=>cmpBin(a.l.bin,b.l.bin)).map(rowOf),...extras.map(exOf)];
   const dif=[H,...rows.filter(r=>['CANT','LOC','LIPSA'].includes(r.st)).map(rowOf),...extras.map(exOf)];
   const byZone={}; rows.forEach(r=>{const o=byZone[r.z]=byZone[r.z]||{n:0,sc:0,ok:0,cant:0,loc:0,lipsa:0,nen:0,plus:0,sq:0,fq:0}; o.n++; o.sq+=Number(r.l.q); if(r.rec){o.sc++;o.fq+=Number(r.rec.q);} o[{OK:'ok',CANT:'cant',LOC:'loc',LIPSA:'lipsa',NENUMARAT:'nen'}[r.st]]++;}); extras.forEach(x=>{const o=byZone[x.z]=byZone[x.z]||{n:0,sc:0,ok:0,cant:0,loc:0,lipsa:0,nen:0,plus:0,sq:0,fq:0}; o.plus++; o.fq+=Number(x.e.q);});
-  const sum=[['Zonă','Paleți scriptic','Scanați','OK','Cantitate diferită','Altă locație','Lipsă','Nenumărat','În plus','Buc. scriptic','Buc. fizic','Diferență buc.'],...Object.keys(byZone).sort(cmpZone).map(z=>{const o=byZone[z];return [zlabel(job,z),o.n,o.sc,o.ok,o.cant,o.loc,o.lipsa,o.nen,o.plus,o.sq,o.fq,o.fq-o.sq];})];
+  const sum=[['Zonă','Alocat la','Paleți scriptic','Scanați','OK','Cantitate diferită','Altă locație','Lipsă','Nenumărat','În plus','Buc. scriptic','Buc. fizic','Diferență buc.'],...Object.keys(byZone).sort(cmpZone).map(z=>{const o=byZone[z];return [zlabel(job,z),(job.assign||{})[z]?.name||'',o.n,o.sc,o.ok,o.cant,o.loc,o.lipsa,o.nen,o.plus,o.sq,o.fq,o.fq-o.sq];})];
   const jur=[['Data/ora','Utilizator','Tip','SU','Articol','Locație','Cantitate'],...[...rows.filter(r=>r.rec).map(r=>[r.rec.t,r.rec.u,STATUS_RO[r.st],r.l.su,r.l.m,r.rec.bin,r.rec.q]),...extras.map(x=>[x.e.t,x.e.u,'În plus',x.e.su,x.e.m,x.e.bin,x.e.q])].sort((a,b)=>a[0]-b[0]).map(r=>[fmtF(r[0]),...r.slice(1)])];
   const wb=XLSX.utils.book_new(); const add=(name,data,widths)=>{ const ws=XLSX.utils.aoa_to_sheet(data); ws['!autofilter']={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(1,data.length-1),c:data[0].length-1}})}; ws['!cols']=(widths||data[0].map(()=>({wch:14}))); ws['!freeze']={xSplit:0,ySplit:1}; XLSX.utils.book_append_sheet(wb,ws,name); };
   const w=[16,7,8,12,34,8,10,10,6,11,16,8,10,16,12,14,14,30].map(x=>({wch:x}));
@@ -498,11 +506,11 @@ async function createRecount(job,chunks,prog){ const {rows,extras}=analyze(chunk
   try{ Store = CFG.demo ? makeDemoStore() : await makeFirebaseStore(); }catch(e){ app.innerHTML='<div class="login card">Nu pot porni Firebase: '+esc(e.message)+'<br>Verifică config.js.</div>'; return; }
   await Store.init();
   if('serviceWorker' in navigator && location.protocol==='https:'){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
-  Store.onAuth(async u=>{ S.user=u; if(S.unsubJobs){S.unsubJobs();S.unsubJobs=null;} stopPda(); stopDash(); S.pda.job=null; S.pda.zone=null; S.dash.job=null; S.tab=null;
+  Store.onAuth(async u=>{ S.user=u; if(S.unsubJobs){S.unsubJobs();S.unsubJobs=null;} stopPda(); stopDash(); S.pda.job=null; S.pda.route=false; S.dash.job=null; S.tab=null;
     if(!u){ const done=await Store.isSetupDone(); renderLogin(!done); return; }
     if(u.missing){ app.innerHTML='<div class="login card">Contul există în Firebase Auth dar nu are fișă de utilizator (users/'+esc(u.id)+'). Roagă administratorul să o creeze.<br><br><button id="lo">Ieși</button></div>'; $('#lo').onclick=()=>Store.logout(); return; }
     if(u.active===false){ app.innerHTML='<div class="login card">Utilizator dezactivat.<br><br><button id="lo">Ieși</button></div>'; $('#lo').onclick=()=>Store.logout(); return; }
-    S.unsubJobs=Store.listenJobs(jobs=>{ S.jobs=jobs; if(S.dash.job){ const j=jobs.find(x=>x.id===S.dash.job.id); if(j) S.dash.job=j; } if(S.pda.job){ const j=jobs.find(x=>x.id===S.pda.job.id); if(j) S.pda.job=j; } if(S.tab==='jobs') renderJobs(); else if(S.tab==='pda'&&!S.pda.zone) renderPdaHome(); else if(S.tab==='dash'&&!S.dash.job) renderDashHome(); else if(S.tab==='dash'&&S.dash.job&&!jobs.some(j=>j.id===S.dash.job.id&&j.status!=='sters')){ stopDash(); S.dash.job=null; renderDashHome(); } });
+    S.unsubJobs=Store.listenJobs(jobs=>{ S.jobs=jobs; if(S.dash.job){ const j=jobs.find(x=>x.id===S.dash.job.id); if(j) S.dash.job=j; } if(S.pda.job){ const j=jobs.find(x=>x.id===S.pda.job.id); if(j) S.pda.job=j; } if(S.tab==='jobs') renderJobs(); else if(S.tab==='pda'&&!S.pda.route) renderPdaHome(); else if(S.tab==='dash'&&!S.dash.job) renderDashHome(); else if(S.tab==='dash'&&S.dash.job&&!jobs.some(j=>j.id===S.dash.job.id&&j.status!=='sters')){ stopDash(); S.dash.job=null; renderDashHome(); } });
     renderShell(); });
 })();
 </script>
