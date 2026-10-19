@@ -86,6 +86,7 @@ tr.click{cursor:pointer} tr.click:hover{background:#f6f8fb}
 <script type="module">
 /* ============================ UTIL ============================ */
 const CFG = window.INVENTAR_CONFIG || {demo:true};
+const APP_VERSION = 'v2.1 · 19.10.2026';
 const $ = (s, el=document)=>el.querySelector(s);
 const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const now = ()=>Date.now();
@@ -213,7 +214,7 @@ const isAdmin=()=>S.user?.role==='admin'; const isSup=()=>S.user?.role==='superv
 function renderLogin(setupMode){
   const last=localStorage.getItem('inv_lastname')||'';
   app.innerHTML=`<div class="login"><div class="logo">${esc(CFG.appName||'Inventar PDA')}</div>
-  <div class="muted small" style="margin-bottom:16px">${setupMode?'Prima configurare — creează contul de administrator.':'Autentificare cu nume și PIN'}${Store.demo?' · <b>mod demo</b> (date doar în acest browser)':''}</div>
+  <div class="muted small" style="margin-bottom:16px">${setupMode?'Prima configurare — creează contul de administrator.':'Autentificare cu nume și PIN'}${Store.demo?' · <b>mod demo</b> (date doar în acest browser)':''} · <span class="mono">${APP_VERSION}</span></div>
   <div class="card"><label>Nume${setupMode?' administrator':' / echipă'}</label><input id="lname" value="${esc(last)}" autocomplete="username" placeholder="ex. Echipa 3 sau Ion Popescu">
   <label>PIN (6 cifre)</label><input id="lpin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="current-password">
   <div id="lerr" class="small" style="color:var(--err);margin-top:8px"></div>
@@ -232,7 +233,7 @@ function renderShell(){
   if(isSup()){ tabs.push(['jobs','Joburi']); tabs.push(['dash','Dashboard']); }
   if(isAdmin()) tabs.push(['users','Utilizatori']);
   if(!S.tab||!tabs.some(t=>t[0]===S.tab)) S.tab=tabs[0][0];
-  app.innerHTML=`<div class="topbar"><span class="brand">${esc(CFG.appName||'Inventar PDA')}</span><span class="who">${esc(S.user.name)} · ${esc(S.user.role)}</span><button class="ghost" id="logout" style="color:#fff">Ieși</button></div>
+  app.innerHTML=`<div class="topbar"><span class="brand" title="${APP_VERSION}">${esc(CFG.appName||'Inventar PDA')} <span style="font-weight:400;font-size:11px;opacity:.7">${APP_VERSION}</span></span><span class="who">${esc(S.user.name)} · ${esc(S.user.role)}</span><button class="ghost" id="logout" style="color:#fff">Ieși</button></div>
   <div id="offline" class="offline hidden">Fără conexiune — scanările se salvează local și se trimit când revine rețeaua</div>
   <div class="tabs">${tabs.map(t=>`<button data-tab="${t[0]}" class="${S.tab===t[0]?'on':''}">${t[1]}</button>`).join('')}</div><div class="page" id="page"></div>`;
   $('#logout').onclick=async()=>{ stopPda(); stopDash(); await Store.logout(); };
